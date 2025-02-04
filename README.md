@@ -45,6 +45,7 @@
 
 
 ## :postbox: Update
+- [2025.02] 📢 📢 📢 Code and demo will be released next week 🤗
 - [2025.02] This repo is created.
 
 ## :mag_right: Overview
@@ -67,5 +68,10 @@
         }
    ```
 
-<!-- ## 📧 Contact
-If you have any questions, please feel free to reach us at `peiqingyang99@outlook.com`.  -->
+## 📝 License
+
+This project is licensed under <a rel="license" href="./LICENSE">NTU S-Lab License 1.0</a>. Redistribution and use should follow this license.
+
+## 📧 Contact
+
+If you have any questions, please feel free to reach us at `peiqingyang99@outlook.com`. 
