@@ -20,13 +20,16 @@
 <div>
     <h4 align="center">
         <a href="https://pq-yang.github.io/projects/MatAnyone/" target='_blank'>
-        <img src="https://img.shields.io/badge/🐳-Project%20Page-blue">
+        <img src="https://img.shields.io/badge/🤡-Project%20Page-blue">
         </a>
         <a href="https://arxiv.org/abs/2501.14677" target='_blank'>
         <img src="https://img.shields.io/badge/arXiv-2501.14677-b31b1b.svg">
         </a>
         <a href="https://www.youtube.com/watch?v=oih0Zk-UW18" target='_blank'>
         <img src="https://img.shields.io/badge/Demo%20Video-%23FF0000.svg?logo=YouTube&logoColor=white">
+        </a>
+        <a href="https://huggingface.co/spaces/PeiqingYang/MatAnyone" target='_blank'>
+        <img src="https://img.shields.io/badge/Demo-%F0%9F%A4%97%20Hugging%20Face-blue">
         </a>
         <img src="https://api.infinitescript.com/badgen/count?name=sczhou/MatAnyone&ltext=Visitors&color=3977dd">
     </h4>
@@ -44,14 +47,87 @@
 </div>
 
 
-## :postbox: Update
-- [2025.02] 📢 📢 📢 Code and demo will be released next week 🤗
+## 📮 Update
+- [2025.02] Release inference codes and gradio demo 🤗
 - [2025.02] This repo is created.
 
-## :mag_right: Overview
+## 🔎 Overview
 ![overall_structure](assets/pipeline.jpg)
 
-## :circus_tent: Interactive Demo
+## 🔧 Installation
+1. Clone Repo
+    ```bash
+    git clone https://github.com/pq-yang/MatAnyone
+    cd MatAnyone
+    ```
+
+2. Create Conda Environment and Install Dependencies
+    ```bash
+    # create new conda env
+    conda create -n matanyone python=3.8 -y
+    conda activate matanyone
+
+    # install python dependencies
+    pip install -e .
+    # [optional] install python dependencies for gradio demo
+    pip3 install -r hugging_face/requirements.txt
+    ```
+
+## 🔥 Inference
+### Download Model
+Download our pretrained model from [MatAnyone v1.0.0](https://github.com/pq-yang/MatAnyone/releases/download/v1.0.0/matanyone.pth) to the `pretrained_models` folder (pretrained model can also be automatically downloaded during the first inference).
+
+The directory structure will be arranged as:
+```
+pretrained_models
+   |- matanyone.pth
+```
+
+### Quick Test
+We provide some examples in the [`inputs`](./inputs) folder. **For each run, we take a video and its first-frame segmenatation mask as input.** <u>The segmenation mask could be obtained from interactive segmentation models such as [SAM2 demo](https://huggingface.co/spaces/fffiloni/SAM2-Image-Predictor)</u>. For example, the directory structure can be arranged as:
+```
+inputs
+   |- video
+      |- test-sample0          # folder containing all frames
+      |- test-sample1.mp4      # .mp4, .mov, .avi
+   |- mask
+      |- test-sample0_1.png    # mask for person 1
+      |- test-sample0_2.png    # mask for person 2
+      |- test-sample1.png    
+```
+Run the following command to try it out:
+
+```shell
+## single target
+# short video; 720p
+python inference_matanyone.py -i inputs/video/test-sample1.mp4 -m inputs/mask/test-sample1.png
+# short video; 1080p
+python inference_matanyone.py -i inputs/video/test-sample2.mp4 -m inputs/mask/test-sample2.png
+# long video; 1080p
+python inference_matanyone.py -i inputs/video/test-sample3.mp4 -m inputs/mask/test-sample3.png
+
+## multiple targets (control by mask)
+# obtain matte for target 1
+python inference_matanyone.py -i inputs/video/test-sample0 -m inputs/mask/test-sample0_1.png --suffix target1
+# obtain matte for target 2
+python inference_matanyone.py -i inputs/video/test-sample0 -m inputs/mask/test-sample0_2.png --suffix target2
+```
+The results will be saved in the `results` folder, including the foreground output video and the alpha output video. If you also want to save the results as per-frame images, you can set `--save_image`.
+
+## 🎪 Interactive Demo
+To get rid of the preparation for first-frame segmentation mask, we prepare a gradio demo on [hugging face](https://huggingface.co/spaces/PeiqingYang/MatAnyone) and could also **launch locally**. Just drop your video/image, assign the target masks with a few clicks, and get the the matting results!
+```shell
+cd hugging_face
+
+# install python dependencies
+pip3 install -r requirements.txt # FFmpeg required
+
+# launch the demo
+python app.py
+```
+
+By launching, an interactive interface will appear as follow:
+
 ![overall_teaser](assets/teaser_demo.gif)
 
 
@@ -71,6 +147,10 @@
 ## 📝 License
 
 This project is licensed under <a rel="license" href="./LICENSE">NTU S-Lab License 1.0</a>. Redistribution and use should follow this license.
+
+## 👏 Acknowledgement
+
+This project is built upon [Cutie](https://github.com/hkchengrex/Cutie), with the interactive demo adapted from [ProPainter](https://github.com/sczhou/ProPainter), leveraging segmentation capabilities from [Segment Anything Model](https://github.com/facebookresearch/segment-anything) and [Segment Anything Model 2](https://github.com/facebookresearch/sam2). Thanks for their awesome works!
 
 ## 📧 Contact
 
