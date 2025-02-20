@@ -38,6 +38,7 @@ def main(input_path, mask_path, output_path, ckpt_path, n_warmup=10, r_erode=10,
     vframes, fps, length, video_name = read_frame_from_videos(input_path)
     repeated_frames = vframes[0].unsqueeze(0).repeat(n_warmup, 1, 1, 1) # repeat the first frame for warmup
     vframes = torch.cat([repeated_frames, vframes], dim=0)
+    length += n_warmup  # update length
 
     # set output paths
     os.makedirs(output_path, exist_ok=True)
