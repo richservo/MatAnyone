@@ -6,6 +6,7 @@ import numpy as np
 from PIL import Image
 
 import torch
+import torch.nn.functional as F
 
 from hugging_face.tools.download_util import load_file_from_url
 from utils import gen_dilate, gen_erosion, read_frame_from_videos
@@ -18,7 +19,7 @@ warnings.filterwarnings("ignore")
 
 @torch.inference_mode()
 @torch.cuda.amp.autocast()
-def main(input_path, mask_path, output_path, ckpt_path, n_warmup=10, r_erode=10, r_dilate=10, suffix="", save_image=False):
+def main(input_path, mask_path, output_path, ckpt_path, n_warmup=10, r_erode=10, r_dilate=10, suffix="", save_image=False, max_size=-1):
     # download ckpt for the first inference
     pretrain_model_url = "https://github.com/pq-yang/MatAnyone/releases/download/v1.0.0"
     ckpt_path = load_file_from_url(os.path.join(pretrain_model_url, 'matanyone.pth'), 'pretrained_models')
@@ -33,13 +34,24 @@ def main(input_path, mask_path, output_path, ckpt_path, n_warmup=10, r_erode=10,
     r_erode = int(r_erode)
     r_dilate = int(r_dilate)
     n_warmup = int(n_warmup)
+    max_size = int(max_size)
 
     # load input frames
     vframes, fps, length, video_name = read_frame_from_videos(input_path)
     repeated_frames = vframes[0].unsqueeze(0).repeat(n_warmup, 1, 1, 1) # repeat the first frame for warmup
-    vframes = torch.cat([repeated_frames, vframes], dim=0)
+    vframes = torch.cat([repeated_frames, vframes], dim=0).float()
     length += n_warmup  # update length
 
+    # resize if needed
+    if max_size > 0:
+        h, w = vframes.shape[-2:]
+        min_side = min(h, w)
+        if min_side > max_size:
+            new_h = int(h / min_side * max_size)
+            new_w = int(w / min_side * max_size)
+
+        vframes = F.interpolate(vframes, size=(new_h, new_w), mode="area")
+        
     # set output paths
     os.makedirs(output_path, exist_ok=True)
     if suffix != "":
@@ -63,6 +75,10 @@ def main(input_path, mask_path, output_path, ckpt_path, n_warmup=10, r_erode=10,
         mask = gen_erosion(mask, r_erode, r_erode)
 
     mask = torch.from_numpy(mask).cuda()
+
+    if max_size > 0:  # resize needed
+        mask = F.interpolate(mask.unsqueeze(0).unsqueeze(0), size=(new_h, new_w), mode="nearest")
+        mask = mask[0,0]
 
     # inference start
     phas = []
@@ -118,6 +134,7 @@ if __name__ == '__main__':
     parser.add_argument('-d', '--dilate_kernel', type=str, default="10", help='Dilation kernel on the input mask.')
     parser.add_argument('--suffix', type=str, default="", help='Suffix to specify different target when saving, e.g., target1.')
     parser.add_argument('--save_image', action='store_true', default=False, help='Save output frames. Default: False')
+    parser.add_argument('--max_size', type=str, default="-1", help='When positive, the video will be downsampled if min(w, h) exceeds. Default: -1 (means no limit)')
 
     
     args = parser.parse_args()
@@ -130,4 +147,5 @@ if __name__ == '__main__':
          r_erode=args.erode_kernel, \
          r_dilate=args.dilate_kernel, \
          suffix=args.suffix, \
-         save_image=args.save_image)
+         save_image=args.save_image, \
+         max_size=args.max_size)

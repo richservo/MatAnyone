@@ -112,7 +112,9 @@ python inference_matanyone.py -i inputs/video/test-sample0 -m inputs/mask/test-s
 # obtain matte for target 2
 python inference_matanyone.py -i inputs/video/test-sample0 -m inputs/mask/test-sample0_2.png --suffix target2
 ```
-The results will be saved in the `results` folder, including the foreground output video and the alpha output video. If you also want to save the results as per-frame images, you can set `--save_image`.
+The results will be saved in the `results` folder, including the foreground output video and the alpha output video. 
+- If you want to save the results as per-frame images, you can set `--save_image`.
+- If you want to set a limit for the maximum input resolution, you can set `--max_size`, and the video will be downsampled if min(w, h) exceeds. By default, we don't set the limit.
 
 ## 🎪 Interactive Demo
 To get rid of the preparation for first-frame segmentation mask, we prepare a gradio demo on [hugging face](https://huggingface.co/spaces/PeiqingYang/MatAnyone) and could also **launch locally**. Just drop your video/image, assign the target masks with a few clicks, and get the the matting results!
