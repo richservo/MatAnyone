@@ -21,8 +21,8 @@ warnings.filterwarnings("ignore")
 @torch.cuda.amp.autocast()
 def main(input_path, mask_path, output_path, ckpt_path, n_warmup=10, r_erode=10, r_dilate=10, suffix="", save_image=False, max_size=-1):
     # download ckpt for the first inference
-    pretrain_model_url = "https://github.com/pq-yang/MatAnyone/releases/download/v1.0.0"
-    ckpt_path = load_file_from_url(os.path.join(pretrain_model_url, 'matanyone.pth'), 'pretrained_models')
+    pretrain_model_url = "https://github.com/pq-yang/MatAnyone/releases/download/v1.0.0/matanyone.pth"
+    ckpt_path = load_file_from_url(pretrain_model_url, 'pretrained_models')
     
     # load MatAnyone model
     matanyone = get_matanyone_model(ckpt_path)
