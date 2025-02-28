@@ -49,11 +49,6 @@ dependencies = [
   'imageio[ffmpeg]',
 ]
 
-[tool.hatch.build]
-include = [
-    "matanyone/**/*.py",
-    "matanyone/**/__init__.py"
-]
 [tool.hatch.build.targets.wheel]
 packages = ["matanyone"]
 
