@@ -8,14 +8,15 @@ g - usually denotes features that are not shared between objects
 The trailing number of a variable usually denotes the stride
 """
 
+from typing import Iterable
 from omegaconf import DictConfig
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from matanyone.model.group_modules import *
+from matanyone.model.group_modules import MainToGroupDistributor, GroupFeatureFusionBlock, GConv2d
 from matanyone.model.utils import resnet
-from matanyone.model.modules import *
+from matanyone.model.modules import SensoryDeepUpdater, SensoryUpdater_fullscale, DecoderFeatureProcessor, MaskUpsampleBlock
 
 class UncertPred(nn.Module):
     def __init__(self, model_cfg: DictConfig):
