@@ -56,10 +56,5 @@ packages = ["matanyone"]
 "Homepage" = "https://github.com/pq-yang/MatAnyone"
 "Bug Tracker" = "https://github.com/pq-yang/MatAnyone/issues"
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["matanyone*"]
-exclude = ["tests*"]
-
 [tool.setuptools]
 package-dir = {"" = "."}
