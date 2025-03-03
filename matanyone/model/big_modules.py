@@ -52,11 +52,14 @@ class PixelEncoder(nn.Module):
         super().__init__()
 
         self.is_resnet = 'resnet' in model_cfg.pixel_encoder.type
+        # if model_cfg.pretrained_resnet is set in the model_cfg we get the value
+        # else default to True
+        is_pretrained_resnet = getattr(model_cfg,"pretrained_resnet",True)
         if self.is_resnet:
             if model_cfg.pixel_encoder.type == 'resnet18':
-                network = resnet.resnet18(pretrained=True)
+                network = resnet.resnet18(pretrained=is_pretrained_resnet)
             elif model_cfg.pixel_encoder.type == 'resnet50':
-                network = resnet.resnet50(pretrained=True)
+                network = resnet.resnet50(pretrained=is_pretrained_resnet)
             else:
                 raise NotImplementedError
             self.conv1 = network.conv1
@@ -128,10 +131,13 @@ class MaskEncoder(nn.Module):
         self.single_object = single_object
         extra_dim = 1 if single_object else 2
 
+        # if model_cfg.pretrained_resnet is set in the model_cfg we get the value
+        # else default to True
+        is_pretrained_resnet = getattr(model_cfg,"pretrained_resnet",True)
         if model_cfg.mask_encoder.type == 'resnet18':
-            network = resnet.resnet18(pretrained=True, extra_dim=extra_dim)
+            network = resnet.resnet18(pretrained=is_pretrained_resnet, extra_dim=extra_dim)
         elif model_cfg.mask_encoder.type == 'resnet50':
-            network = resnet.resnet50(pretrained=True, extra_dim=extra_dim)
+            network = resnet.resnet50(pretrained=is_pretrained_resnet, extra_dim=extra_dim)
         else:
             raise NotImplementedError
         self.conv1 = network.conv1
