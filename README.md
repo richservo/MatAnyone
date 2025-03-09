@@ -116,6 +116,19 @@ The results will be saved in the `results` folder, including the foreground outp
 - If you want to save the results as per-frame images, you can set `--save_image`.
 - If you want to set a limit for the maximum input resolution, you can set `--max_size`, and the video will be downsampled if min(w, h) exceeds. By default, we don't set the limit.
 
+## 🤗 Load from Hugging Face
+Alternatively, models can also be loaded from [Hugging Face](https://huggingface.co/PeiqingYang/MatAnyone) (requires `pip install huggingface_hub`).
+
+```shell
+pip install -q git+https://github.com/pq-yang/MatAnyone
+```
+
+Users will only need to use these 2 lines to load and instantiate the model.
+```python
+from matanyone.model.matanyone import MatAnyone
+model = MatAnyone.from_pretrained("PeiqingYang/MatAnyone")
+```
+
 ## 🎪 Interactive Demo
 To get rid of the preparation for first-frame segmentation mask, we prepare a gradio demo on [hugging face](https://huggingface.co/spaces/PeiqingYang/MatAnyone) and could also **launch locally**. Just drop your video/image, assign the target masks with a few clicks, and get the the matting results!
 ```shell
@@ -153,6 +166,10 @@ This project is licensed under <a rel="license" href="./LICENSE">NTU S-Lab Licen
 ## 👏 Acknowledgement
 
 This project is built upon [Cutie](https://github.com/hkchengrex/Cutie), with the interactive demo adapted from [ProPainter](https://github.com/sczhou/ProPainter), leveraging segmentation capabilities from [Segment Anything Model](https://github.com/facebookresearch/segment-anything) and [Segment Anything Model 2](https://github.com/facebookresearch/sam2). Thanks for their awesome works!
+
+---
+
+This study is supported under the RIE2020 Industry Alignment Fund – Industry Collaboration Projects (IAF-ICP) Funding Initiative, as well as cash and in-kind contribution from the industry partner(s).
 
 ## 📧 Contact
 
