@@ -123,11 +123,13 @@ Alternatively, models can also be loaded from [Hugging Face](https://huggingface
 pip install -q git+https://github.com/pq-yang/MatAnyone
 ```
 
-Users will only need to use these 2 lines to load and instantiate the model.
+Users will only need to use these two lines to load and instantiate the model.
 ```python
 from matanyone.model.matanyone import MatAnyone
-model = MatAnyone.from_pretrained("PeiqingYang/MatAnyone")
+matanyone = MatAnyone.from_pretrained("PeiqingYang/MatAnyone").cuda().eval()
 ```
+
+For inference, you may refer to the [inference script](https://github.com/pq-yang/MatAnyone/blob/main/inference_matanyone.py) and substitute L23-L28 (model loading part) with the above lines.
 
 ## 🎪 Interactive Demo
 To get rid of the preparation for first-frame segmentation mask, we prepare a gradio demo on [hugging face](https://huggingface.co/spaces/PeiqingYang/MatAnyone) and could also **launch locally**. Just drop your video/image, assign the target masks with a few clicks, and get the the matting results!
