@@ -48,7 +48,8 @@
 
 
 ## 📮 Update
-- [2025.02] Release inference codes and gradio demo 🤗
+- [2025.03] Integrate MatAnyone with Hugging Face 🤗
+- [2025.02] Release inference codes and gradio demo.
 - [2025.02] This repo is created.
 
 ## 🔎 Overview
@@ -116,21 +117,6 @@ The results will be saved in the `results` folder, including the foreground outp
 - If you want to save the results as per-frame images, you can set `--save_image`.
 - If you want to set a limit for the maximum input resolution, you can set `--max_size`, and the video will be downsampled if min(w, h) exceeds. By default, we don't set the limit.
 
-## 🤗 Load from Hugging Face
-Alternatively, models can also be loaded from [Hugging Face](https://huggingface.co/PeiqingYang/MatAnyone) (requires `pip install huggingface_hub`).
-
-```shell
-pip install -q git+https://github.com/pq-yang/MatAnyone
-```
-
-Users will only need to use these two lines to load and instantiate the model.
-```python
-from matanyone.model.matanyone import MatAnyone
-matanyone = MatAnyone.from_pretrained("PeiqingYang/MatAnyone").cuda().eval()
-```
-
-For inference, you may refer to the [inference script](https://github.com/pq-yang/MatAnyone/blob/main/inference_matanyone.py) and substitute L23-L28 (model loading part) with the above lines.
-
 ## 🎪 Interactive Demo
 To get rid of the preparation for first-frame segmentation mask, we prepare a gradio demo on [hugging face](https://huggingface.co/spaces/PeiqingYang/MatAnyone) and could also **launch locally**. Just drop your video/image, assign the target masks with a few clicks, and get the the matting results!
 ```shell
@@ -146,6 +132,25 @@ python app.py
 By launching, an interactive interface will appear as follow:
 
 ![overall_teaser](assets/teaser_demo.gif)
+
+## 🤗 Load from Hugging Face
+Alternatively, models can be directly loaded from [Hugging Face](https://huggingface.co/PeiqingYang/MatAnyone) to make inference.
+
+```shell
+# pip install huggingface_hub
+pip install -q git+https://github.com/pq-yang/MatAnyone
+```
+
+Users will only need to use these two lines to load and instantiate the model.
+```python
+from matanyone.model.matanyone import MatAnyone
+matanyone = MatAnyone.from_pretrained("PeiqingYang/MatAnyone").cuda().eval()
+```
+
+We also provide a **stand-alone** [inference script](https://github.com/pq-yang/MatAnyone/blob/main/inference_matanyone_api.py) that could be used as **API**, without the need of other files in the repo.
+```shell
+python inference_matanyone_api.py -i <input video> -m <first-frame seg mask>
+```
 
 
 ## 📑 Citation
