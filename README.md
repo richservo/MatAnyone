@@ -48,6 +48,7 @@
 
 
 ## 📮 Update
+- [2025.03] Release our evaluation benchmark - [YouTubeMatte](https://github.com/pq-yang/MatAnyone?tab=readme-ov-file#-evaluation-benchmark).
 - [2025.03] Integrate MatAnyone with Hugging Face 🤗
 - [2025.02] Release inference codes and gradio demo.
 - [2025.02] This repo is created.
@@ -151,6 +152,19 @@ We also provide a **stand-alone** [inference script](https://github.com/pq-yang/
 ```shell
 python inference_matanyone_api.py -i <input video> -m <first-frame seg mask>
 ```
+
+## 📊 Evaluation Benchmark
+
+We provide a synthetic benchmark **[YouTubeMatte](https://drive.google.com/file/d/1IEH0RaimT_hSp38AWF6wuwNJzzNSHpJ4/view?usp=sharing)** to enlarge the commonly-used [VideoMatte240K-Test](https://github.com/PeterL1n/RobustVideoMatting/blob/master/documentation/training.md#evaluation). A comparison between them is summarized in the table below.
+
+| Dataset             | #Foregrounds |       Source       | Harmonized |
+| :------------------ | :----------: | :----------------: | :--------: |
+| VideoMatte240K-Test |      5       | Purchased Footage  |     ❌      |
+| **YouTubeMatte**    |    **32**    | **YouTube Videos** |     ✅      |
+
+It is noteworthy that we applied **harmonization** (using [Harmonizer](https://github.com/ZHKKKe/Harmonizer)) when compositing the foreground on a background. Such an operation effectively makes YouTubeMatte a more *challenging* benchmark that is closer to the *real* distribution. As shown in the figure below, while [RVM](https://github.com/PeterL1n/RobustVideoMatting) is confused by the harmonized frame, our method still yields robust performance.
+
+![harmonization](assets/harmonization.jpg)
 
 
 ## 📑 Citation
