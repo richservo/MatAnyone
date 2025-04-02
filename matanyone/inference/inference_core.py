@@ -1,11 +1,12 @@
-from typing import List, Optional, Iterable, Union,Tuple
 import logging
 from omegaconf import DictConfig
+from typing import List, Optional, Iterable, Union,Tuple
 
 import os
 import cv2
 import torch
 import imageio
+import tempfile
 import numpy as np
 from tqdm import tqdm
 from PIL import Image
@@ -35,7 +36,8 @@ class InferenceCore:
         network.to(device)
         network.eval()
         self.network = network  
-        self.cfg = cfg if cfg is not None else network.cfg
+        cfg = cfg if cfg is not None else network.cfg
+        self.cfg = cfg
         self.mem_every = cfg.mem_every
         stagger_updates = cfg.stagger_updates
         self.chunk_size = cfg.chunk_size
@@ -423,7 +425,7 @@ class InferenceCore:
         self,
         input_path: str,
         mask_path: str,
-        output_path: str,
+        output_path: str = None,
         n_warmup: int = 10,
         r_erode: int = 10,
         r_dilate: int = 10,
@@ -438,7 +440,7 @@ class InferenceCore:
         Args:
             input_path (str): Path to the input video file
             mask_path (str): Path to the mask image file used for initial segmentation
-            output_path (str): Directory path where output files will be saved
+            output_path (str, optional): Directory path where output files will be saved. Defaults to a temporary directory
             n_warmup (int, optional): Number of warmup frames to use. Defaults to 10
             r_erode (int, optional): Erosion radius for mask processing. Defaults to 10
             r_dilate (int, optional): Dilation radius for mask processing. Defaults to 10
@@ -453,6 +455,7 @@ class InferenceCore:
             - Saves processed video files with foreground (_fgr) and alpha matte (_pha)
             - If save_image=True, saves individual frames in separate directories
         """
+        output_path = output_path if output_path is not None else tempfile.TemporaryDirectory().name
         r_erode = int(r_erode)
         r_dilate = int(r_dilate)
         n_warmup = int(n_warmup)
