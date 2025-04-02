@@ -75,6 +75,25 @@
     ```
 
 ## 🔥 Inference
+## 🤗 Load from Hugging Face
+Alternatively, models can be directly loaded from [Hugging Face](https://huggingface.co/PeiqingYang/MatAnyone) to make inference.
+
+```shell
+# pip install huggingface_hub
+pip install -q git+https://github.com/pq-yang/MatAnyone
+```
+
+to extract the foreground and the alpha video you can directly run the following script
+```python
+from matanyone.inference.inference_core import InferenceCore
+processor = InferenceCore("PeiqingYang/MatAnyone")
+
+foreground_path, alpha_path = processor.process_video(
+    input_path = "inputs/video/test-sample1.mp4",
+    mask_path = "inputs/mask/test-sample1.png",
+    output_path = "outputs"
+)
+```
 ### Download Model
 Download our pretrained model from [MatAnyone v1.0.0](https://github.com/pq-yang/MatAnyone/releases/download/v1.0.0/matanyone.pth) to the `pretrained_models` folder (pretrained model can also be automatically downloaded during the first inference).
 
@@ -133,24 +152,6 @@ By launching, an interactive interface will appear as follow:
 
 ![overall_teaser](assets/teaser_demo.gif)
 
-## 🤗 Load from Hugging Face
-Alternatively, models can be directly loaded from [Hugging Face](https://huggingface.co/PeiqingYang/MatAnyone) to make inference.
-
-```shell
-# pip install huggingface_hub
-pip install -q git+https://github.com/pq-yang/MatAnyone
-```
-
-Users will only need to use these two lines to load and instantiate the model.
-```python
-from matanyone.model.matanyone import MatAnyone
-matanyone = MatAnyone.from_pretrained("PeiqingYang/MatAnyone").cuda().eval()
-```
-
-We also provide a **stand-alone** [inference script](https://github.com/pq-yang/MatAnyone/blob/main/inference_matanyone_api.py) that could be used as **API**, without the need of other files in the repo.
-```shell
-python inference_matanyone_api.py -i <input video> -m <first-frame seg mask>
-```
 
 
 ## 📑 Citation
