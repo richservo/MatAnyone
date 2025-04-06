@@ -1,4 +1,4 @@
-from matanyone.inference.inference_core import InferenceCore
+from matanyone import InferenceCore
 
 
 def main(

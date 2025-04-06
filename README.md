@@ -86,7 +86,7 @@ pip install -q git+https://github.com/pq-yang/MatAnyone
 
 to extract the foreground and the alpha video you can directly run the following script
 ```python
-from matanyone.inference.inference_core import InferenceCore
+from matanyone import InferenceCore
 processor = InferenceCore("PeiqingYang/MatAnyone")
 
 foreground_path, alpha_path = processor.process_video(

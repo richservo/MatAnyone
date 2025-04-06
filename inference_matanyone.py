@@ -9,7 +9,7 @@ import torch
 import torch.nn.functional as F
 
 from hugging_face.tools.download_util import load_file_from_url
-from utils import gen_dilate, gen_erosion, read_frame_from_videos
+from matanyone.utils.inference_utils import gen_dilate, gen_erosion, read_frame_from_videos
 
 from matanyone.inference.inference_core import InferenceCore
 from matanyone.utils.get_default_model import get_matanyone_model
