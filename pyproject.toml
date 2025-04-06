@@ -47,6 +47,7 @@ dependencies = [
   'pyqtdarktheme',
   'imageio == 2.25.0',
   'imageio[ffmpeg]',
+  'safetensors',
 ]
 
 [tool.hatch.build.targets.wheel]
