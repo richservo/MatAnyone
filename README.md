@@ -80,7 +80,6 @@
 Alternatively, models can be directly loaded from [Hugging Face](https://huggingface.co/PeiqingYang/MatAnyone) to make inference.
 
 ```shell
-# pip install huggingface_hub
 pip install -q git+https://github.com/pq-yang/MatAnyone
 ```
 
