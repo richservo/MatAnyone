@@ -18,7 +18,7 @@ import warnings
 warnings.filterwarnings("ignore")
 
 @torch.inference_mode()
-@torch.cuda.amp.autocast()
+@torch.amp.autocast("cuda")
 def main(input_path, mask_path, output_path, ckpt_path, n_warmup=10, r_erode=10, r_dilate=10, suffix="", save_image=False, max_size=-1):
     # download ckpt for the first inference
     pretrain_model_url = "https://github.com/pq-yang/MatAnyone/releases/download/v1.0.0/matanyone.pth"

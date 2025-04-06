@@ -53,7 +53,7 @@ def gen_erosion(alpha, min_kernel_size, max_kernel_size):
     return erode.astype(np.float32)
 
 @torch.inference_mode()
-@torch.cuda.amp.autocast()
+@torch.amp.autocast("cuda")
 def main(input_path, mask_path, output_path, ckpt_path, n_warmup=10, r_erode=10, r_dilate=10, suffix="", save_image=False, max_size=-1):
 
     matanyone = MatAnyone.from_pretrained("PeiqingYang/MatAnyone").cuda().eval()
