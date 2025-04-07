@@ -9,7 +9,7 @@ import torch
 import torch.nn.functional as F
 
 from hugging_face.tools.download_util import load_file_from_url
-from utils import gen_dilate, gen_erosion, read_frame_from_videos
+from matanyone.utils.inference_utils import gen_dilate, gen_erosion, read_frame_from_videos
 
 from matanyone.inference.inference_core import InferenceCore
 from matanyone.utils.get_default_model import get_matanyone_model
@@ -18,7 +18,7 @@ import warnings
 warnings.filterwarnings("ignore")
 
 @torch.inference_mode()
-@torch.cuda.amp.autocast()
+@torch.amp.autocast("cuda")
 def main(input_path, mask_path, output_path, ckpt_path, n_warmup=10, r_erode=10, r_dilate=10, suffix="", save_image=False, max_size=-1):
     # download ckpt for the first inference
     pretrain_model_url = "https://github.com/pq-yang/MatAnyone/releases/download/v1.0.0/matanyone.pth"

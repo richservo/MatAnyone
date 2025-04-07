@@ -1,4 +1,4 @@
-from typing import List, Dict, Iterable
+from typing import List, Dict, Iterable, Tuple
 import logging
 from omegaconf import DictConfig
 import torch
@@ -96,7 +96,7 @@ class MatAnyone(nn.Module,
             *,
             deep_update: bool = True,
             chunk_size: int = -1,
-            need_weights: bool = False) -> (torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor):
+            need_weights: bool = False) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         image = (image - self.pixel_mean) / self.pixel_std
         others = self._get_others(masks)
         mask_value, new_sensory = self.mask_encoder(image,
@@ -113,7 +113,7 @@ class MatAnyone(nn.Module,
                       final_pix_feat: torch.Tensor,
                       *,
                       need_sk: bool = True,
-                      need_ek: bool = True) -> (torch.Tensor, torch.Tensor, torch.Tensor):
+                      need_ek: bool = True) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         key, shrinkage, selection = self.key_proj(final_pix_feat, need_s=need_sk, need_e=need_ek)
         return key, shrinkage, selection
 
@@ -124,7 +124,7 @@ class MatAnyone(nn.Module,
                     msk_value: torch.Tensor, obj_memory: torch.Tensor, pix_feat: torch.Tensor,
                     sensory: torch.Tensor, last_mask: torch.Tensor,
                     selector: torch.Tensor, uncert_output=None, seg_pass=False,
-                    last_pix_feat=None, last_pred_mask=None) -> (torch.Tensor, Dict[str, torch.Tensor]):
+                    last_pix_feat=None, last_pred_mask=None) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
         """
         query_key       : B * CK * H * W
         query_selection : B * CK * H * W
@@ -139,7 +139,7 @@ class MatAnyone(nn.Module,
         uncert_mask = uncert_output["mask"] if uncert_output is not None else None
 
         # read using visual attention
-        with torch.cuda.amp.autocast(enabled=False):
+        with torch.amp.autocast("cuda",enabled=False):
             affinity = get_affinity(memory_key.float(), memory_shrinkage.float(), query_key.float(),
                                     query_selection.float(), uncert_mask=uncert_mask)
 
@@ -171,7 +171,7 @@ class MatAnyone(nn.Module,
     def read_first_frame_memory(self, pixel_readout,
                     obj_memory: torch.Tensor, pix_feat: torch.Tensor,
                     sensory: torch.Tensor, last_mask: torch.Tensor,
-                    selector: torch.Tensor, seg_pass=False) -> (torch.Tensor, Dict[str, torch.Tensor]):
+                    selector: torch.Tensor, seg_pass=False) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
         """
         query_key       : B * CK * H * W
         query_selection : B * CK * H * W
@@ -218,7 +218,7 @@ class MatAnyone(nn.Module,
                       *,
                       selector=None,
                       need_weights=False,
-                      seg_pass=False) -> (torch.Tensor, Dict[str, torch.Tensor]):
+                      seg_pass=False) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
         return self.object_transformer(pixel_readout,
                                        obj_memory,
                                        selector=selector,
@@ -237,7 +237,7 @@ class MatAnyone(nn.Module,
                 clamp_mat: bool = True,
                 last_mask=None,
                 sigmoid_residual=False,
-                seg_mat=False) -> (torch.Tensor, torch.Tensor, torch.Tensor):
+                seg_mat=False) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         multi_scale_features is from the key encoder for skip-connection
         memory_readout is from working/long-term memory

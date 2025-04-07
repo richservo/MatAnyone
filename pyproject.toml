@@ -47,6 +47,8 @@ dependencies = [
   'pyqtdarktheme',
   'imageio == 2.25.0',
   'imageio[ffmpeg]',
+  'huggingface_hub',
+  'safetensors',
 ]
 
 [tool.hatch.build.targets.wheel]
