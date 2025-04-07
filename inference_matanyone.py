@@ -125,8 +125,8 @@ def main(input_path, mask_path, output_path, ckpt_path, n_warmup=10, r_erode=10,
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('-i', '--input_path', type=str, default="inputs/video/test-sample0.mp4", help='Path of the input video or frame folder.')
-    parser.add_argument('-m', '--mask_path', type=str, default="inputs/mask/test-sample0.png", help='Path of the first-frame segmentation mask.')
+    parser.add_argument('-i', '--input_path', type=str, default="inputs/video/test-sample1.mp4", help='Path of the input video or frame folder.')
+    parser.add_argument('-m', '--mask_path', type=str, default="inputs/mask/test-sample1.png", help='Path of the first-frame segmentation mask.')
     parser.add_argument('-o', '--output_path', type=str, default="results/", help='Output folder. Default: results')
     parser.add_argument('-c', '--ckpt_path', type=str, default="pretrained_models/matanyone.pth", help='Path of the MatAnyone model.')
     parser.add_argument('-w', '--warmup', type=str, default="10", help='Number of warmup iterations for the first frame alpha prediction.')

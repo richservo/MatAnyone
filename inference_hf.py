@@ -25,4 +25,3 @@ def main(
         max_size=max_size,
     )
     return fgr, alpha
-    

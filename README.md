@@ -75,7 +75,6 @@
     pip3 install -r hugging_face/requirements.txt
     ```
 
-## 🔥 Inference
 ## 🤗 Load from Hugging Face
 Alternatively, models can be directly loaded from [Hugging Face](https://huggingface.co/PeiqingYang/MatAnyone) to make inference.
 
@@ -83,7 +82,7 @@ Alternatively, models can be directly loaded from [Hugging Face](https://hugging
 pip install -q git+https://github.com/pq-yang/MatAnyone
 ```
 
-to extract the foreground and the alpha video you can directly run the following script
+To extract the foreground and the alpha video you can directly run the following lines. Please refer to [inference_hf.py](https://github.com/pq-yang/MatAnyone/blob/main/inference_hf.py) for more arguments.
 ```python
 from matanyone import InferenceCore
 processor = InferenceCore("PeiqingYang/MatAnyone")
@@ -94,6 +93,9 @@ foreground_path, alpha_path = processor.process_video(
     output_path = "outputs"
 )
 ```
+
+## 🔥 Inference
+
 ### Download Model
 Download our pretrained model from [MatAnyone v1.0.0](https://github.com/pq-yang/MatAnyone/releases/download/v1.0.0/matanyone.pth) to the `pretrained_models` folder (pretrained model can also be automatically downloaded during the first inference).
 
