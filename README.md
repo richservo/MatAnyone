@@ -174,10 +174,10 @@ It is noteworthy that we applied **harmonization** (using [Harmonizer](https://g
    If you find our repo useful for your research, please consider citing our paper:
 
    ```bibtex
-    @InProceedings{yang2025matanyone,
+    @inProceedings{yang2025matanyone,
         title     = {{MatAnyone}: Stable Video Matting with Consistent Memory Propagation},
         author    = {Yang, Peiqing and Zhou, Shangchen and Zhao, Jixin and Tao, Qingyi and Loy, Chen Change},
-        booktitle = {arXiv preprint arXiv:2501.14677},
+        booktitle = {CVPR},
         year      = {2025}
         }
    ```
