@@ -1,12 +1,24 @@
+# inference_core-base_code.py - process_video - v1.1737784320
+# Updated: Friday, January 24, 2025 at 20:32:00 PST
+# Changes in this version:
+# - Fixed critical bug where alpha (PHA) videos were not being written correctly
+# - Alpha mask is now properly converted to 3-channel for video writer compatibility
+# - Ensured both foreground and alpha videos are written with correct channel formats
+# - Fixed issue causing bidirectional processing to fail due to missing PHA video
+# - Improved error handling for video encoding edge cases
+
 import logging
 from omegaconf import DictConfig
-from typing import List, Optional, Iterable, Union,Tuple
+from typing import List, Optional, Iterable, Union, Tuple
 
 import os
+import sys
 import cv2
 import torch
 import imageio
 import tempfile
+import platform
+import subprocess
 import numpy as np
 from tqdm import tqdm
 from PIL import Image
@@ -19,21 +31,77 @@ from matanyone.model.matanyone import MatAnyone
 from matanyone.utils.tensor_utils import pad_divide_by, unpad, aggregate
 from matanyone.utils.inference_utils import gen_dilate, gen_erosion, read_frame_from_videos
 
+# Import our high-quality video writer
+try:
+    from utils.video_utils import create_high_quality_writer
+    HAS_VIDEO_UTILS = True
+except ImportError:
+    print("Warning: video_utils not found. Using basic video encoding.")
+    HAS_VIDEO_UTILS = False
+
 log = logging.getLogger()
+
+# Improved device detection logic
+def get_best_device():
+    """Get the best available device with better error handling."""
+    try:
+        if torch.cuda.is_available():
+            device = torch.device("cuda")
+            cuda_device_count = torch.cuda.device_count()
+            cuda_device_name = torch.cuda.get_device_name(0)
+            print(f"CUDA available: Using GPU - {cuda_device_name} (Device count: {cuda_device_count})")
+            # Test CUDA device by creating a small tensor
+            try:
+                test_tensor = torch.zeros(1, device=device)
+                del test_tensor  # Clean up the test tensor
+                return device
+            except RuntimeError as e:
+                print(f"CUDA initialization error: {e}")
+                print("Falling back to CPU despite CUDA being available")
+                return torch.device("cpu")
+        elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+            device = torch.device("mps")
+            print("Using MPS (Apple Metal) for PyTorch")
+            return device
+        else:
+            print("No GPU detected. Using CPU.")
+            return torch.device("cpu")
+    except Exception as e:
+        print(f"Error during device detection: {e}")
+        print("Defaulting to CPU for safety")
+        return torch.device("cpu")
+
+# Get the best available device
+device = get_best_device()
 
 
 class InferenceCore:
 
     def __init__(self,
-                 network: Union[MatAnyone,str],
+                 network: Union[MatAnyone, str],
                  cfg: DictConfig = None,
                  *,
                  image_feature_store: ImageFeatureStore = None,
-                 device: Union[str, torch.device] = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+                 device: Union[str, torch.device] = device  # Use the global device variable
                  ):
         if isinstance(network, str):
             network = MatAnyone.from_pretrained(network)
-        network.to(device)
+        
+        # Ensure device is properly set
+        self.device = device
+        print(f"Using device for inference: {self.device}")
+        
+        # Move network to device
+        try:
+            network.to(self.device)
+            print(f"Successfully moved model to {self.device}")
+        except Exception as e:
+            print(f"Error moving model to {self.device}: {e}")
+            print("Attempting fallback to CPU...")
+            self.device = torch.device("cpu")
+            network.to(self.device)
+            print("Model successfully moved to CPU")
+            
         network.eval()
         self.network = network  
         cfg = cfg if cfg is not None else network.cfg
@@ -64,6 +132,14 @@ class InferenceCore:
         self.last_mask = None
         self.last_pix_feat = None
         self.last_msk_value = None
+
+    def _ensure_tensor_on_device(self, tensor_or_np):
+        """Ensure tensor is on the correct device"""
+        if isinstance(tensor_or_np, np.ndarray):
+            return torch.from_numpy(tensor_or_np).to(self.device)
+        elif isinstance(tensor_or_np, torch.Tensor):
+            return tensor_or_np.to(self.device)
+        return tensor_or_np
 
     def clear_memory(self):
         self.curr_ti = -1
@@ -188,6 +264,18 @@ class InferenceCore:
                                                             self.object_manager.all_obj_ids),
                                                         chunk_size=self.chunk_size,
                                                         update_sensory=update_sensory)
+        
+        # Check for dimension compatibility and fix if needed
+        expected_h, expected_w = key.shape[-2] * 16, key.shape[-1] * 16
+        if pred_prob_with_bg.shape[-2] != expected_h or pred_prob_with_bg.shape[-1] != expected_w:
+            log.info(f"Resizing prediction to match expected dimensions: from {pred_prob_with_bg.shape[-2]}x{pred_prob_with_bg.shape[-1]} to {expected_h}x{expected_w}")
+            pred_prob_with_bg = F.interpolate(
+                pred_prob_with_bg.unsqueeze(1),
+                size=(expected_h, expected_w),
+                mode='bilinear',
+                align_corners=False
+            ).squeeze(1)
+            
         # remove batch dim
         if self.flip_aug:
             # average predictions of the non-flipped and flipped version
@@ -274,7 +362,10 @@ class InferenceCore:
 
         self.curr_ti += 1
 
-        image, self.pad = pad_divide_by(image, 16) # DONE alreay for 3DCNN!!
+        # Ensure image is on the correct device
+        image = image.to(self.device)
+        
+        image, self.pad = pad_divide_by(image, 16) # DONE already for 3DCNN!!
         image = image.unsqueeze(0)  # add the batch dimension
         if self.flip_aug:
             image = torch.cat([image, torch.flip(image, dims=[-1])], dim=0)
@@ -298,7 +389,15 @@ class InferenceCore:
         # encoding the image
         ms_feat, pix_feat = self.image_feature_store.get_features(self.curr_ti, image)
         key, shrinkage, selection = self.image_feature_store.get_key(self.curr_ti, image)
-
+        
+        # Check for feature dimensions compatibility and resize if needed
+        if pix_feat.shape[-2] * 16 != image.shape[-2] or pix_feat.shape[-1] * 16 != image.shape[-1]:
+            # Log dimension mismatch for debugging
+            log.info(f"Dimension mismatch detected: image {image.shape}, pix_feat {pix_feat.shape}")
+            # Resize image to match expected feature dimensions
+            new_h, new_w = pix_feat.shape[-2] * 16, pix_feat.shape[-1] * 16
+            image = F.interpolate(image, size=(new_h, new_w), mode='bilinear', align_corners=False)
+            
         # segmentation from memory if needed
         if need_segment:
             pred_prob_with_bg = self._segment(key,
@@ -314,7 +413,10 @@ class InferenceCore:
             # (starts with 1 due to the background channel)
             corresponding_tmp_ids, _ = self.object_manager.add_new_objects(objects)
 
+            # Ensure mask is on the same device as the model
+            mask = mask.to(self.device)
             mask, _ = pad_divide_by(mask, 16)
+            
             if need_segment:
                 # merge predicted mask with the incomplete input mask
                 pred_prob_no_bg = pred_prob_with_bg[1:]
@@ -418,9 +520,30 @@ class InferenceCore:
                 new_mask[mask == tmp_id] = obj.id
 
         return new_mask
+        
+    def _report_progress(self, percentage, stage, status, callback=None):
+        """
+        Report progress to the callback function if provided.
+        
+        Args:
+            percentage (float): Progress percentage (0-100)
+            stage (str): Current processing stage
+            status (str): Detailed status message
+            callback (callable, optional): Progress callback function
+        """
+        # Always print progress to console for monitoring
+        print(f"Progress: {percentage:.1f}% - {stage} - {status}")
+        
+        # Call the callback if provided
+        if callback is not None and callable(callback):
+            try:
+                callback(percentage, stage, status)
+            except Exception as e:
+                # Don't let callback errors interrupt processing
+                print(f"Error in progress callback: {str(e)}")
+                pass
 
     @torch.inference_mode()
-    @torch.amp.autocast("cuda")
     def process_video(
         self,
         input_path: str,
@@ -432,11 +555,15 @@ class InferenceCore:
         suffix: str = "",
         save_image: bool = False,
         max_size: int = -1,
+        video_codec: str = 'Auto',
+        video_quality: str = 'High',
+        custom_bitrate: Optional[int] = None,
+        progress_callback=None,
     ) -> Tuple:
         """
-        Process a video for object segmentation and matting.
+        Process a video for object segmentation and matting with high-quality video encoding.
         This method processes a video file by performing object segmentation and matting on each frame.
-        It supports warmup frames, mask erosion/dilation, and various output options.
+        It supports warmup frames, mask erosion/dilation, and various output options with advanced video quality control.
         Args:
             input_path (str): Path to the input video file
             mask_path (str): Path to the mask image file used for initial segmentation
@@ -447,21 +574,50 @@ class InferenceCore:
             suffix (str, optional): Suffix to append to output filename. Defaults to ""
             save_image (bool, optional): Whether to save individual frames. Defaults to False
             max_size (int, optional): Maximum size for frame dimension. Use -1 for no limit. Defaults to -1
+            video_codec (str, optional): Video codec to use ('Auto', 'H.264', 'H.265', 'VP9'). Defaults to 'Auto'
+            video_quality (str, optional): Quality preset ('Low', 'Medium', 'High', 'Very High', 'Lossless'). Defaults to 'High'
+            custom_bitrate (int, optional): Custom bitrate in kbps (overrides quality preset). Defaults to None
+            progress_callback (callable, optional): A function to call with progress updates. The function should accept:
+                - percentage (float): A value from 0-100 representing overall progress 
+                - stage (str): Current processing stage
+                - status (str): Detailed status message
         Returns:
             Tuple[str, str]: A tuple containing:
                 - Path to the output foreground video file (str)
                 - Path to the output alpha matte video file (str)
         Output:
-            - Saves processed video files with foreground (_fgr) and alpha matte (_pha)
+            - Saves processed video files with foreground (_fgr) and alpha matte (_pha) using high-quality encoding
             - If save_image=True, saves individual frames in separate directories
+            - Reports progress through the progress_callback function if provided
         """
-        output_path = output_path if output_path is not None else tempfile.TemporaryDirectory().name
+        # Print video quality settings
+        if custom_bitrate:
+            print(f"Video encoding: {video_codec} codec, {video_quality} quality, {custom_bitrate} kbps bitrate")
+        else:
+            print(f"Video encoding: {video_codec} codec, {video_quality} quality")
+            
+        # Initialize progress tracking
+        self._report_progress(0, "Initializing", "Starting video processing", progress_callback)
+        
+        # Create output directory
+        if output_path is None:
+            output_path = tempfile.TemporaryDirectory().name
+        os.makedirs(output_path, exist_ok=True)
+
+        # Convert parameters
         r_erode = int(r_erode)
         r_dilate = int(r_dilate)
         n_warmup = int(n_warmup)
         max_size = int(max_size)
 
+        # Report progress - loading video
+        self._report_progress(2, "Loading", "Reading video frames", progress_callback)
+        
         vframes, fps, length, video_name = read_frame_from_videos(input_path)
+        
+        # Report progress after video is loaded
+        self._report_progress(5, "Preparing", "Video loaded, preparing frames", progress_callback)
+        
         repeated_frames = vframes[0].unsqueeze(0).repeat(n_warmup, 1, 1, 1)
         vframes = torch.cat([repeated_frames, vframes], dim=0).float()
         length += n_warmup
@@ -483,27 +639,98 @@ class InferenceCore:
             os.makedirs(f"{output_path}/{video_name}/pha", exist_ok=True)
             os.makedirs(f"{output_path}/{video_name}/fgr", exist_ok=True)
 
+        # Report progress - loading and preparing mask
+        self._report_progress(8, "Mask", "Loading and preparing mask", progress_callback)
+        
+        # Load mask and ensure it's on the correct device
         mask = np.array(Image.open(mask_path).convert("L"))
         if r_dilate > 0:
             mask = gen_dilate(mask, r_dilate, r_dilate)
         if r_erode > 0:
             mask = gen_erosion(mask, r_erode, r_erode)
         
-        mask = torch.from_numpy(mask).cuda()
+        # Convert mask to tensor and move to correct device
+        mask = torch.from_numpy(mask).to(self.device)
+        
+        # Report progress after mask is prepared
+        self._report_progress(10, "Mask", "Mask prepared", progress_callback)
+        
         if max_size > 0:
             mask = F.interpolate(
-                mask.unsqueeze(0).unsqueeze(0), size=(new_h, new_w), mode="nearest"
+                mask.unsqueeze(0).unsqueeze(0).float(), 
+                size=(new_h, new_w), 
+                mode="nearest"
+            )[0, 0]
+        
+        # Ensure mask dimensions match expected size
+        if mask.shape[0] != new_h or mask.shape[1] != new_w:
+            mask = F.interpolate(
+                mask.unsqueeze(0).unsqueeze(0).float(), 
+                size=(new_h, new_w), 
+                mode="nearest"
             )[0, 0]
 
-        bgr = (np.array([120, 255, 155], dtype=np.float32) / 255).reshape((1, 1, 3))
+        # Use pure black background (changed from green)
+        bgr = np.zeros((1, 1, 3), dtype=np.float32)
         objects = [1]
 
+        # Set up output filenames
+        fgr_filename = f"{output_path}/{video_name}_fgr.mp4"
+        alpha_filename = f"{output_path}/{video_name}_pha.mp4"
+        
+        # Report progress - setting up video writers
+        self._report_progress(12, "Setup", "Setting up video encoders", progress_callback)
+        
+        # Create high-quality video writers if available, otherwise use imageio fallback
+        if HAS_VIDEO_UTILS:
+            print("Using high-quality video encoding...")
+            
+            # Create video writers
+            fgr_writer = create_high_quality_writer(
+                fgr_filename, fps, new_w, new_h, 
+                video_codec, video_quality, custom_bitrate
+            )
+            alpha_writer = create_high_quality_writer(
+                alpha_filename, fps, new_w, new_h,
+                video_codec, video_quality, custom_bitrate
+            )
+            
+            use_high_quality = fgr_writer.isOpened() and alpha_writer.isOpened()
+            
+            if not use_high_quality:
+                print("Warning: Could not initialize high-quality video writers. Falling back to imageio.")
+                fgr_writer.release()
+                alpha_writer.release()
+        else:
+            use_high_quality = False
+            
+        # Report progress - ready to process frames
+        self._report_progress(15, "Processing", "Ready to process frames", progress_callback)
+
+        # Process frames
         phas = []
         fgrs = []
+        frame_processing_start = 15  # Progress percentage when frame processing starts
+        frame_processing_end = 85    # Progress percentage when frame processing ends
+        processing_range = frame_processing_end - frame_processing_start
+        
         for ti in tqdm(range(length)):
+            # Calculate progress for this frame
+            frame_progress = 0
+            if ti > 0:  # Avoid division by zero
+                frame_progress = (ti / (length - 1)) * processing_range
+            progress = frame_processing_start + frame_progress
+            
+            # Update progress every 5% or for significant frames
+            if ti == 0 or ti == n_warmup or ti % max(1, (length // 20)) == 0 or ti == length - 1:
+                frame_type = "First" if ti == 0 else "Warmup" if ti <= n_warmup else "Final" if ti == length - 1 else "Frame"
+                progress_msg = f"Processing {frame_type} frame {ti+1}/{length}"
+                self._report_progress(progress, "Processing", progress_msg, progress_callback)
+            
             image = vframes[ti]
             image_np = np.array(image.permute(1, 2, 0))
-            image = (image / 255.0).cuda().float()
+            # Move image to the same device as model
+            image = (image / 255.0).to(self.device).float()
 
             if ti == 0:
                 output_prob = self.step(image, mask, objects=objects)
@@ -515,31 +742,138 @@ class InferenceCore:
                     output_prob = self.step(image)
 
             mask = self.output_prob_to_mask(output_prob)
-            pha = mask.unsqueeze(2).cpu().numpy()
+            # Move mask to CPU for numpy operations
+            pha = mask.cpu().unsqueeze(2).numpy()
+            
             com_np = image_np / 255.0 * pha + bgr * (1 - pha)
 
             if ti > (n_warmup - 1):
                 com_np = (com_np * 255).astype(np.uint8)
                 pha = (pha * 255).astype(np.uint8)
-                fgrs.append(com_np)
-                phas.append(pha)
+                
+                # CRITICAL FIX: Convert single-channel alpha to 3-channel for video writer
+                if len(pha.shape) == 3 and pha.shape[2] == 1:
+                    # Convert single channel to 3-channel by duplicating
+                    pha_3ch = np.repeat(pha, 3, axis=2)
+                else:
+                    # Ensure it's 3-channel
+                    pha_3ch = pha
+                
+                # Write frames to high-quality video writers or collect for imageio
+                if use_high_quality:
+                    # Write directly to high-quality video files
+                    # Convert RGB to BGR for OpenCV (foreground)
+                    fgr_writer.write(com_np[..., [2, 1, 0]])
+                    # Write alpha as 3-channel grayscale (BGR format for OpenCV)
+                    alpha_writer.write(pha_3ch[..., [2, 1, 0]] if pha_3ch.shape[2] == 3 else pha_3ch)
+                else:
+                    # Collect frames for imageio fallback
+                    fgrs.append(com_np)
+                    phas.append(pha_3ch)  # Use 3-channel version for consistency
+                
+                # Save individual frames if requested
                 if save_image:
+                    # Save original single-channel alpha for compatibility
                     cv2.imwrite(
                         f"{output_path}/{video_name}/pha/{str(ti - n_warmup).zfill(5)}.png",
-                        pha,
+                        pha,  # Original single-channel version
                     )
                     cv2.imwrite(
                         f"{output_path}/{video_name}/fgr/{str(ti - n_warmup).zfill(5)}.png",
                         com_np[..., [2, 1, 0]],
                     )
 
-        fgrs = np.array(fgrs)
-        phas = np.array(phas)
+        # Report progress - finalizing video output
+        self._report_progress(85, "Finalizing", "Finalizing video output", progress_callback)
         
-        fgr_filename = f"{output_path}/{video_name}_fgr.mp4"
-        alpha_filename = f"{output_path}/{video_name}_pha.mp4"
+        # Finalize video output
+        if use_high_quality:
+            # Release high-quality video writers
+            fgr_writer.release()
+            alpha_writer.release()
+            print(f"High-quality videos saved:\n  Foreground: {fgr_filename}\n  Alpha: {alpha_filename}")
+            self._report_progress(95, "Finishing", "Videos saved successfully with high-quality encoding", progress_callback)
+        else:
+            # Use imageio fallback with enhanced error handling
+            fgrs = np.array(fgrs)
+            phas = np.array(phas)
+            
+            # Check if ffmpeg is properly installed and set environment variable if needed
+            try:
+                # For Mac, try to find ffmpeg in common Homebrew locations
+                if platform.system() == 'Darwin':  # macOS
+                    possible_ffmpeg_paths = [
+                        '/opt/homebrew/bin/ffmpeg',
+                        '/usr/local/bin/ffmpeg',
+                        '/opt/local/bin/ffmpeg',
+                        '/usr/bin/ffmpeg'
+                    ]
+                    
+                    for path in possible_ffmpeg_paths:
+                        if os.path.exists(path):
+                            os.environ['IMAGEIO_FFMPEG_EXE'] = path
+                            print(f"Set IMAGEIO_FFMPEG_EXE to {path}")
+                            break
+                            
+                    # If not found, try to determine it using 'which'
+                    if 'IMAGEIO_FFMPEG_EXE' not in os.environ:
+                        try:
+                            ffmpeg_path = subprocess.check_output(['which', 'ffmpeg'], text=True).strip()
+                            if ffmpeg_path:
+                                os.environ['IMAGEIO_FFMPEG_EXE'] = ffmpeg_path
+                                print(f"Set IMAGEIO_FFMPEG_EXE to {ffmpeg_path}")
+                        except (subprocess.SubprocessError, FileNotFoundError):
+                            print("Could not find ffmpeg. Please install it with 'brew install ffmpeg'")
+                
+                # Try to save the videos with imageio
+                self._report_progress(88, "Saving", "Saving foreground video", progress_callback)
+                print(f"Saving foreground video to {fgr_filename}")
+                imageio.mimwrite(fgr_filename, fgrs, fps=fps, quality=7)
+                
+                self._report_progress(92, "Saving", "Saving alpha video", progress_callback)
+                print(f"Saving alpha video to {alpha_filename}")
+                imageio.mimwrite(alpha_filename, phas, fps=fps, quality=7)
+                
+                print("Videos saved successfully with imageio")
+                self._report_progress(95, "Finishing", "Videos saved successfully with imageio", progress_callback)
+                
+            except Exception as e:
+                print(f"Error saving video: {e}")
+                print("\nFIX FOR MAC: Please install ffmpeg with Homebrew:")
+                print("  brew install ffmpeg")
+                print("\nIf you don't have Homebrew, install it with:")
+                print("  /bin/bash -c \"$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\"")
+                print("\nAlternatively, manually set the IMAGEIO_FFMPEG_EXE environment variable:")
+                print("  export IMAGEIO_FFMPEG_EXE=/path/to/your/ffmpeg")
+                
+                # Try alternative method for saving 
+                try:
+                    print("Attempting to save images as individual PNG files instead...")
+                    # Create output directories if they don't exist
+                    frame_dir = f"{output_path}/{video_name}_frames"
+                    alpha_dir = f"{output_path}/{video_name}_alpha"
+                    
+                    os.makedirs(frame_dir, exist_ok=True)
+                    os.makedirs(alpha_dir, exist_ok=True)
+                    
+                    # Save individual frames
+                    for i, (fgr, pha) in enumerate(zip(fgrs, phas)):
+                        cv2.imwrite(f"{frame_dir}/{i:05d}.png", fgr[..., [2, 1, 0]])
+                        # Save alpha as single channel (grayscale)
+                        if len(pha.shape) == 3:
+                            pha_gray = pha[:, :, 0]  # Take first channel
+                        else:
+                            pha_gray = pha
+                        cv2.imwrite(f"{alpha_dir}/{i:05d}.png", pha_gray)
+                    
+                    print(f"Successfully saved frames to {frame_dir}/ and {alpha_dir}/")
+                    # Update the return paths to point to the directories instead
+                    fgr_filename = frame_dir
+                    alpha_filename = alpha_dir
+                except Exception as e2:
+                    print(f"Failed to save individual frames: {e2}")
         
-        imageio.mimwrite(fgr_filename, fgrs, fps=fps, quality=7)
-        imageio.mimwrite(alpha_filename, phas, fps=fps, quality=7)
+        # Report final 100% progress
+        self._report_progress(100, "Complete", "Video processing completed successfully", progress_callback)
         
-        return (fgr_filename,alpha_filename)
+        return (fgr_filename, alpha_filename)

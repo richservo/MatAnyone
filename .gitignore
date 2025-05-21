@@ -5,3 +5,8 @@ hugging_face/assets/
 results/
 test_sample/
 pretrained_models/
+BKUP/
+*.pth
+outputs/
+inputs/
+Screenshots/

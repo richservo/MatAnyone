@@ -48,6 +48,7 @@
 
 
 ## 📮 Update
+- [2025.05] Added enhanced GUI interface with advanced video processing features
 - [2025.03] Release our evaluation benchmark - [YouTubeMatte](https://github.com/pq-yang/MatAnyone?tab=readme-ov-file#-evaluation-benchmark).
 - [2025.03] Integrate MatAnyone with Hugging Face 🤗
 - [2025.02] Release inference codes and gradio demo.
@@ -154,6 +155,76 @@ By launching, an interactive interface will appear as follow:
 
 ![overall_teaser](assets/teaser_demo.gif)
 
+## 🖥️ Enhanced GUI Application
+
+For a more comprehensive user experience, we've developed a dedicated desktop GUI application for MatAnyone that provides advanced video processing capabilities with fine-grained control over all aspects of the matting process.
+
+### Running the GUI
+
+Launch the MatAnyone GUI with:
+
+```bash
+python matanyone_gui.py
+```
+
+You can also provide initial paths as command-line arguments:
+
+```bash
+python matanyone_gui.py --input INPUT_VIDEO --mask MASK_PATH --output OUTPUT_DIRECTORY
+```
+
+### GUI Features
+
+![MatAnyone GUI](Screenshots/Screenshot%202025-05-21%20at%2010.56.27%20AM.png)
+
+The GUI provides a comprehensive set of controls organized into logical sections:
+
+#### Input/Output Controls
+- Support for both video files and image sequences
+- Path selection for input video, mask file, and output directory
+- One-click browsing for file selection
+
+#### Processing Options
+- **Basic Controls**: Warmup frames, max size settings, and video quality settings
+- **Mask Controls**: Erosion and dilation radius settings with live preview
+- **Advanced Controls**: Chunk processing options, bidirectional processing, and blend method selection
+
+#### Enhanced Chunk Processing
+- Specialized options for processing long or high-resolution videos
+- Auto-chunk mode for optimal memory usage
+- Low-resolution scale options for preview and faster processing
+- Mask threshold adjustment with live preview
+
+#### Built-in Mask Generator
+
+The application includes a powerful built-in mask generator that allows you to create precise segmentation masks without needing external tools.
+
+![Mask Generator](Screenshots/Screenshot%202025-05-21%20at%2010.56.42%20AM.png)
+
+With the mask generator you can:
+- Create precise masks with point-and-click interface
+- Choose between point selection and box selection modes
+- See real-time preview of the generated mask
+
+![Generated Mask](Screenshots/Screenshot%202025-05-21%20at%2010.56.56%20AM.png)
+
+The mask generator uses Segment Anything Model (SAM) to create high-quality masks with minimal user input.
+
+![Mask Selection](Screenshots/Screenshot%202025-05-21%20at%2010.57.11%20AM.png)
+
+Fine-tune your masks with precision controls:
+- Select foreground/background points
+- Create selection boxes for larger regions
+- Adjust and refine existing masks
+- Paint tool for manual mask editing
+
+![Mask Fine-tuning](Screenshots/Screenshot%202025-05-21%20at%2010.57.32%20AM.png)
+
+#### Additional Features
+- Real-time console output for monitoring processing status
+- Progress tracking during video processing
+- High-quality video encoding with codec and bitrate selection
+- Save individual frames option for further editing
 
 ## 📊 Evaluation Benchmark
 
