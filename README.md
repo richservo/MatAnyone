@@ -175,7 +175,7 @@ python matanyone_gui.py --input INPUT_VIDEO --mask MASK_PATH --output OUTPUT_DIR
 
 ### GUI Features
 
-![MatAnyone GUI](Screenshots/Screenshot%202025-05-21%20at%2010.56.27%20AM.png)
+![MatAnyone GUI](assets/gui_main_interface.png)
 
 The GUI provides a comprehensive set of controls organized into logical sections:
 
@@ -199,18 +199,18 @@ The GUI provides a comprehensive set of controls organized into logical sections
 
 The application includes a powerful built-in mask generator that allows you to create precise segmentation masks without needing external tools.
 
-![Mask Generator](Screenshots/Screenshot%202025-05-21%20at%2010.56.42%20AM.png)
+![Mask Generator](assets/mask_generator.png)
 
 With the mask generator you can:
 - Create precise masks with point-and-click interface
 - Choose between point selection and box selection modes
 - See real-time preview of the generated mask
 
-![Generated Mask](Screenshots/Screenshot%202025-05-21%20at%2010.56.56%20AM.png)
+![Generated Mask](assets/generated_mask.png)
 
 The mask generator uses Segment Anything Model (SAM) to create high-quality masks with minimal user input.
 
-![Mask Selection](Screenshots/Screenshot%202025-05-21%20at%2010.57.11%20AM.png)
+![Mask Selection](assets/mask_selection.png)
 
 Fine-tune your masks with precision controls:
 - Select foreground/background points
@@ -218,7 +218,7 @@ Fine-tune your masks with precision controls:
 - Adjust and refine existing masks
 - Paint tool for manual mask editing
 
-![Mask Fine-tuning](Screenshots/Screenshot%202025-05-21%20at%2010.57.32%20AM.png)
+![Mask Fine-tuning](assets/mask_finetuning.png)
 
 #### Additional Features
 - Real-time console output for monitoring processing status
