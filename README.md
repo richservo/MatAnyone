@@ -60,7 +60,7 @@
 ## 🔧 Installation
 1. Clone Repo
     ```bash
-    git clone https://github.com/pq-yang/MatAnyone
+    git clone https://github.com/richservo/MatAnyone
     cd MatAnyone
     ```
 
@@ -74,6 +74,27 @@
     pip install -e .
     # [optional] install python dependencies for gradio demo
     pip3 install -r hugging_face/requirements.txt
+    ```
+
+3. Install Segment Anything Model (SAM) for Mask Generation
+    ```bash
+    # Install SAM for mask generation
+    pip install git+https://github.com/facebookresearch/segment-anything.git
+    
+    # For SAM2 support (recommended for better mask quality)
+    pip install git+https://github.com/facebookresearch/segment-anything-2.git
+    ```
+
+4. Download SAM Model Checkpoints
+    ```bash
+    # Create directory for SAM checkpoints
+    mkdir -p pretrained_models/sam
+    
+    # Download SAM checkpoint (original SAM)
+    wget -P pretrained_models/sam https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth
+    
+    # For SAM2 (optional but recommended)
+    wget -P pretrained_models/sam https://dl.fbaipublicfiles.com/segment_anything_2/sam2_hiera_l.pth
     ```
 
 ## 🤗 Load from Hugging Face
