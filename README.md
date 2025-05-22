@@ -211,7 +211,7 @@ The MatAnyone GUI features an groundbreaking **Smart Chunking System** that anal
 1. **Heat Map Analysis**: The system analyzes the entire mask sequence to create a "heat map" showing where activity occurs throughout the video
 2. **Face Detection Integration**: Facial regions receive priority weighting (3x boost) to ensure optimal quality for human subjects  
 3. **Intelligent Placement**: Chunks are positioned to center important content rather than just covering areas with activity
-4. **Dynamic Orientation**: Chunks can be oriented horizontally (960x540) or vertically (540x960) based on content layout
+4. **Dynamic Orientation**: Chunks can be oriented horizontally or vertically based on what works best for the content layout
 5. **Complete Coverage**: Advanced algorithms ensure every active area is covered while eliminating redundant processing
 
 ### Smart vs Uniform Chunking
