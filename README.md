@@ -78,26 +78,28 @@
     pip3 install -r hugging_face/requirements.txt
     ```
 
-3. Install Segment Anything Model (SAM) for Mask Generation
+3. Install Segment Anything Models (SAM)
     ```bash
-    # Install SAM for mask generation
+    # Install original SAM (required)
     pip install git+https://github.com/facebookresearch/segment-anything.git
-    
-    # For SAM2 support (recommended for better mask quality)
-    pip install git+https://github.com/facebookresearch/segment-anything-2.git
     ```
 
-4. Download SAM Model Checkpoints
+4. [Optional] Install SAM2 for Better Mask Quality
+    
+    **Easy Installation (Python 3.8):**
     ```bash
-    # Create directory for SAM checkpoints
-    mkdir -p pretrained_models/sam
-    
-    # Download SAM checkpoint (original SAM)
-    wget -P pretrained_models/sam https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth
-    
-    # For SAM2 (optional but recommended)
-    wget -P pretrained_models/sam https://dl.fbaipublicfiles.com/segment_anything_2/sam2_hiera_l.pth
+    # Simply run the installer
+    python install_sam2.py
     ```
+    
+    This will automatically:
+    - Download and patch SAM2 for Python 3.8 compatibility
+    - Install SAM2 in your environment
+    - Download the model weights (856MB)
+    - Verify the installation
+    
+    **Note:** SAM2 requires Python 3.10+ officially, but our installer makes it work with Python 3.8. 
+    If SAM2 is not available, MatAnyone will automatically fall back to SAM1.
 
 ## 🤗 Load from Hugging Face
 Alternatively, models can be directly loaded from [Hugging Face](https://huggingface.co/PeiqingYang/MatAnyone) to make inference.

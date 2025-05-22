@@ -80,8 +80,8 @@ class MaskEditor:
                 )
                 print(f"Generated mask with confidence {score:.4f}")
                 
-                # Store the generated mask
-                self.ui.generated_mask = mask
+                # Store the generated mask (ensure it's a boolean array)
+                self.ui.generated_mask = mask.astype(bool)
                 
                 # If we had a previous edited mask, combine it with the new generated mask
                 if previous_edited_mask is not None:
@@ -92,7 +92,8 @@ class MaskEditor:
                     # Strategy: Use a weighted combination of the previous edit and new generation
                     # We favor the previous edits more (they were intentional)
                     # Get a binary mask where the new mask is different from the previous edited mask
-                    diff_mask = (self.ui.generated_mask != previous_edited_mask)
+                    # Ensure both masks are boolean for comparison
+                    diff_mask = (self.ui.generated_mask.astype(bool) != previous_edited_mask.astype(bool))
                     
                     # Where the new mask has content (1s) and we didn't previously edit those pixels,
                     # use the new mask value
@@ -100,7 +101,7 @@ class MaskEditor:
                     self.ui.edited_mask[diff_mask & self.ui.generated_mask] = True
                 else:
                     # Initialize edited mask with the generated mask if no previous edits
-                    self.ui.edited_mask = mask.copy()
+                    self.ui.edited_mask = mask.astype(bool).copy()
                 
             except Exception as e:
                 print(f"Error during mask generation: {str(e)}")

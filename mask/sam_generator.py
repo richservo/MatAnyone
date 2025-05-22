@@ -26,10 +26,88 @@ class SAMMaskGenerator:
         self.device = device
         self.model = None
         self.predictor = None
+        self.model_type_loaded = None
         
     def load_model(self):
-        """Load and initialize the SAM model"""
-        # Import SAM here to avoid dependency issues if not used
+        """Load and initialize the SAM model (tries SAM2 first, falls back to SAM)"""
+        # Try SAM2 first (better quality), then fall back to original SAM
+        if self._try_load_sam2():
+            return True
+        else:
+            return self._try_load_sam()
+    
+    def _try_load_sam2(self):
+        """Try to load SAM2 model"""
+        try:
+            import torch
+            from sam2.build_sam import build_sam2
+            from sam2.sam2_image_predictor import SAM2ImagePredictor
+            
+            # Determine device if not specified
+            if self.device is None:
+                try:
+                    if torch.backends.mps.is_available():
+                        # SAM2 has issues with MPS, so use CPU instead
+                        self.device = torch.device("cpu")
+                        print("MPS detected but SAM2 has compatibility issues with MPS.")
+                        print("Using CPU for SAM2 (still fast enough for real-time use).")
+                    elif torch.cuda.is_available():
+                        self.device = torch.device("cuda")
+                        print("Using CUDA for SAM2")
+                    else:
+                        self.device = torch.device("cpu")
+                        print("Using CPU for SAM2")
+                except:
+                    # Fallback to CPU if device detection fails
+                    self.device = torch.device("cpu")
+                    print("Falling back to CPU for SAM2")
+            
+            # Define SAM2 model paths
+            sam2_checkpoint_path = {
+                "vit_h": "sam2_hiera_l.pth",  # Large model (best quality)
+                "vit_l": "sam2_hiera_l.pth",  # Use large for both
+                "vit_b": "sam2_hiera_b+.pth"  # Base+ model
+            }
+            
+            # Use the large model by default for best quality
+            model_name = "sam2_hiera_l.pth"
+            # Note: SAM2 config files are embedded in the package, not separate files
+            config_name = "sam2_hiera_l.yaml"
+            
+            # Download the model if it doesn't exist
+            model_path = self._download_sam2_model(model_name)
+            
+            try:
+                # Load SAM2 model
+                print(f"Loading SAM2 model on {self.device}...")
+                sam2_model = build_sam2(config_name, model_path, device=self.device)
+                self.predictor = SAM2ImagePredictor(sam2_model)
+                print("SAM2 model loaded successfully")
+                self.model_type_loaded = "SAM2"
+                return True
+            except Exception as e:
+                # If loading on MPS fails, fallback to CPU
+                if str(self.device) == "mps":
+                    print(f"Failed to load SAM2 on MPS: {str(e)}. Falling back to CPU.")
+                    self.device = torch.device("cpu")
+                    sam2_model = build_sam2(config_name, model_path, device=self.device)
+                    self.predictor = SAM2ImagePredictor(sam2_model)
+                    print("SAM2 model loaded successfully on CPU")
+                    self.model_type_loaded = "SAM2"
+                    return True
+                else:
+                    print(f"Failed to load SAM2: {str(e)}")
+                    return False
+                
+        except ImportError:
+            print("SAM2 not available, will try original SAM...")
+            return False
+        except Exception as e:
+            print(f"Error loading SAM2: {str(e)}, will try original SAM...")
+            return False
+    
+    def _try_load_sam(self):
+        """Try to load original SAM model"""
         try:
             import torch
             from segment_anything import sam_model_registry, SamPredictor
@@ -78,15 +156,16 @@ class SAMMaskGenerator:
                     sam.to(self.device)
                     self.predictor = SamPredictor(sam)
                     print("SAM model loaded successfully on CPU")
+                    self.model_type_loaded = "SAM"
                     return True
                 else:
-                    # Re-raise the exception if not on MPS
-                    raise
+                    print(f"Failed to load SAM: {str(e)}")
+                    return False
                 
         except ImportError:
             print("Error: segment-anything package not found. Please install it with:")
             print("pip install git+https://github.com/facebookresearch/segment-anything.git")
-            raise
+            return False
     
     def _download_model(self, model_type, checkpoint_name):
         """
@@ -141,6 +220,56 @@ class SAMMaskGenerator:
             print(f"And place it in {model_path} or in the application directory")
             raise
     
+    def _download_sam2_model(self, checkpoint_name):
+        """
+        Download the SAM2 model if it doesn't exist
+        
+        Args:
+            checkpoint_name: Name of the SAM2 checkpoint file
+        
+        Returns:
+            Path to the downloaded model
+        """
+        import os
+        
+        # Define the model directory (same as SAM)
+        model_dir = os.path.expanduser("~/.cache/sam")
+        os.makedirs(model_dir, exist_ok=True)
+        
+        model_path = os.path.join(model_dir, checkpoint_name)
+        
+        # Check if model already exists
+        if os.path.exists(model_path):
+            return model_path
+        
+        # Also check in the application directory (for compatibility)
+        local_model_path = os.path.join("pretrained_models/sam", checkpoint_name)
+        if os.path.exists(local_model_path):
+            return local_model_path
+        
+        # Define URLs for SAM2 models
+        urls = {
+            "sam2_hiera_l.pth": "https://dl.fbaipublicfiles.com/segment_anything_2/sam2_hiera_l.pth",
+            "sam2_hiera_b+.pth": "https://dl.fbaipublicfiles.com/segment_anything_2/sam2_hiera_b%2B.pth"
+        }
+        
+        if checkpoint_name not in urls:
+            print(f"Unknown SAM2 model: {checkpoint_name}")
+            print(f"Available models: {list(urls.keys())}")
+            raise ValueError(f"Unknown SAM2 model: {checkpoint_name}")
+        
+        try:
+            import urllib.request
+            print(f"Downloading SAM2 model from {urls[checkpoint_name]}...")
+            urllib.request.urlretrieve(urls[checkpoint_name], model_path)
+            print(f"SAM2 model downloaded to {model_path}")
+            return model_path
+        except Exception as e:
+            print(f"Error downloading SAM2 model: {str(e)}")
+            print(f"Please download the model manually from {urls[checkpoint_name]}")
+            print(f"And place it in {model_path} or in the application directory")
+            raise
+    
     def generate_mask_from_image(self, image, points=None, box=None, multimask_output=True):
         """
         Generate a mask from an image using SAM
@@ -155,6 +284,7 @@ class SAMMaskGenerator:
             Generated mask and confidence score
         """
         import numpy as np
+        import torch
         
         if self.predictor is None:
             self.load_model()
