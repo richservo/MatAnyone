@@ -130,7 +130,7 @@ pretrained_models
 ```
 
 ### Quick Test
-We provide some examples in the [`inputs`](./inputs) folder. **For each run, we take a video and its first-frame segmenatation mask as input.** <u>The segmenation mask could be obtained from interactive segmentation models such as [SAM2 demo](https://huggingface.co/spaces/fffiloni/SAM2-Image-Predictor)</u>. For example, the directory structure can be arranged as:
+We provide some examples in the [`inputs`](./inputs) folder. **For each run, we take a video and a segmentation mask as input.** The mask can be from any frame in the video - you don't need your subject to be in frame 0! <u>The segmentation mask can be obtained from interactive segmentation models such as [SAM2 demo](https://huggingface.co/spaces/fffiloni/SAM2-Image-Predictor) or generated directly in the GUI.</u> For example, the directory structure can be arranged as:
 ```
 inputs
    |- video
@@ -260,10 +260,12 @@ The application includes a powerful SAM-based mask generator with an intuitive i
 ![Mask Generator](assets/mask_generator.jpg)
 
 **Key Features:**
+- **Any Frame Processing**: Generate masks on any frame in your video - no need to have your subject in frame 0
 - **Point-and-Click Interface**: Simply click to select foreground/background regions
 - **Box Selection Mode**: Draw rectangles around target objects
 - **Real-time Preview**: See mask generation results instantly
 - **Multiple Selection Methods**: Combine points and boxes for precise control
+- **Keyframe Metadata**: Automatically stores frame information for optimal processing from any starting point
 
 ### Advanced Mask Editor
 
@@ -345,6 +347,17 @@ The Smart Chunking system employs several advanced techniques:
 - **Memory Usage**: Significantly reduced compared to uniform chunking
 - **Quality Improvement**: Up to 40% better results for content with faces
 - **Processing Speed**: 15-25% faster due to reduced redundant processing
+
+### Keyframe Metadata System
+
+MatAnyone includes an advanced keyframe metadata system that allows processing from any frame:
+
+- **Any Frame Start**: Generate masks on any frame where your subject is clearly visible
+- **Intelligent Processing**: System automatically processes forward and backward from the keyframe
+- **Perfect Alignment**: Ensures frame sequence integrity regardless of starting point
+- **Metadata Storage**: Keyframe information is embedded in the mask file for seamless processing
+
+This eliminates the traditional limitation of needing subjects in frame 0, making the workflow much more flexible for real-world videos.
 
 ## 📑 Citation
 
