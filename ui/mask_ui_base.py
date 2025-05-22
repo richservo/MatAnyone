@@ -21,7 +21,7 @@ import cv2
 import json
 
 # Import UI components
-from ui.ui_components import Tooltip
+from ui.ui_components import Tooltip, create_message_dialog
 
 # Import from other mask modules
 from ui.mask_ui_interactions import MaskUIInteractions
@@ -231,8 +231,7 @@ class MaskUIBase:
         # Update UI to show checkpoints
         self.frame_manager.update_checkpoint_markers()
         
-        # Add info label
-        self.add_info_label(main_frame)
+        # Info label removed - now accessible via Help button
         
         # Update brush size from settings
         self.interactions.update_brush_size()
@@ -399,6 +398,10 @@ class MaskUIBase:
                                       command=self.editor.toggle_overlay, state=tk.DISABLED)
         self.overlay_button.pack(side=tk.LEFT, padx=10)
         
+        # Add Load Existing Mask button here (moved from bottom)
+        ttk.Button(button_frame, text="Load Existing Mask", 
+                 command=lambda: self._load_existing_mask(mask_save_path)).pack(side=tk.LEFT, padx=10)
+        
         # Add zoom controls
         zoom_frame = ttk.Frame(button_frame)
         zoom_frame.pack(side=tk.LEFT, padx=(20, 5))
@@ -416,6 +419,10 @@ class MaskUIBase:
         reset_view_button = ttk.Button(zoom_frame, text="Reset View", 
                                      command=self.interactions.reset_view)
         reset_view_button.pack(side=tk.LEFT, padx=5)
+        
+        # Add help button
+        ttk.Button(zoom_frame, text="Help", 
+                 command=self.show_help_dialog).pack(side=tk.LEFT, padx=5)
         
     def create_navigation_controls(self, parent):
         """Create frame navigation controls"""
@@ -611,22 +618,18 @@ class MaskUIBase:
     
     def create_confirm_buttons(self, parent, video_path, mask_save_path):
         """Create confirm and cancel buttons"""
-        # Second row of buttons for confirm/cancel
+        # Bottom row of buttons for confirm/cancel only
         confirm_frame = ttk.Frame(parent)
-        confirm_frame.pack(pady=5)
-        
-        # Load existing mask button
-        ttk.Button(confirm_frame, text="Load Existing Mask", 
-                 command=lambda: self._load_existing_mask(mask_save_path)).pack(side=tk.LEFT, padx=10)
+        confirm_frame.pack(pady=15)
         
         # Confirm button (initially disabled)
         self.confirm_button = ttk.Button(confirm_frame, text="Confirm & Save", 
                                       command=lambda: self.frame_manager.save_and_close(video_path, mask_save_path),
                                       state=tk.DISABLED)
-        self.confirm_button.pack(side=tk.LEFT, padx=10)
+        self.confirm_button.pack(side=tk.LEFT, padx=20)
         
         ttk.Button(confirm_frame, text="Cancel", 
-                 command=self.mask_window.destroy).pack(side=tk.LEFT, padx=10)
+                 command=self.mask_window.destroy).pack(side=tk.LEFT, padx=20)
     
     def bind_mouse_events(self):
         """Bind mouse events to canvas"""
@@ -671,19 +674,90 @@ class MaskUIBase:
         # Add mouse motion bindings
         self.canvas.bind("<B1-Motion>", self.interactions.on_mouse_motion)
     
-    def add_info_label(self, parent):
-        """Add information label to the UI"""
-        info_text = ("Segment Anything Model (SAM) Mask Generator\n"
-                    "Point mode: Left-click for foreground, right-click for background\n"
-                    "Box mode: Click and drag to define a bounding box\n"
-                    "Paint mode: Left-click to add to mask, right-click to remove from mask\n"
-                    "Move mode: Click and drag to pan/move the view\n"
-                    "Use + and - buttons to zoom in/out, 'Reset View' to fit to window\n"
-                    "Use [ and ] keys to adjust brush size\n"
-                    "Use Ctrl+Z to undo, Ctrl+Y to redo\n"
-                    "Note: Paint mode requires a generated mask first\n"
-                    "Generate masks at different frames to create checkpoints")
-        ttk.Label(parent, text=info_text, justify=tk.CENTER).pack(pady=5)
+    def show_help_dialog(self):
+        """Show detailed help information in a dialog"""
+        help_text = """MatAnyone Mask Generator Help
+
+🎯 OVERVIEW
+The SAM (Segment Anything Model) mask generator allows you to create precise masks for video processing. You can generate masks on any frame in your video - there's no need to have your subject in frame 0!
+
+📝 INTERACTION MODES
+
+Point Mode:
+• Left-click: Add foreground points (green)
+• Right-click: Add background points (red)
+• Best for: Precise object selection with clear boundaries
+
+Box Mode:
+• Click and drag: Draw a bounding box around your subject
+• Best for: Quick selection of well-defined objects
+
+Paint Mode:
+• Left-click and drag: Paint to add areas to the mask
+• Right-click and drag: Paint to remove areas from the mask
+• Requires: A generated mask must exist first
+• Best for: Fine-tuning mask boundaries
+
+Move Mode:
+• Click and drag: Pan/move the view around the image
+• Spacebar: Quick toggle to Move mode
+• Best for: Navigating large images
+
+🎮 CONTROLS & SHORTCUTS
+
+Zoom Controls:
+• + button: Zoom in
+• - button: Zoom out
+• Reset View: Fit image to window size
+• Mouse wheel: Zoom in/out at cursor position
+
+Brush Size (Paint Mode):
+• [ key: Decrease brush size
+• ] key: Increase brush size
+• Size range: 1-50 pixels
+
+Edit Controls:
+• Ctrl+Z: Undo last action
+• Ctrl+Y: Redo last undone action
+• Clear: Remove all points and selections
+• Toggle Overlay: Show/hide the generated mask overlay
+
+🎬 FRAME NAVIGATION
+
+Navigation:
+• ← / → buttons: Move between frames
+• Frame slider: Jump to any frame directly
+• Frame input: Type specific frame number
+
+Checkpoints:
+• Generate masks on different frames to create checkpoints
+• Checkpoints appear as markers on the frame slider
+• Allows you to refine masks at key moments in your video
+
+💾 WORKFLOW
+
+1. Navigate to a frame where your subject is clearly visible
+2. Choose your interaction mode (Point/Box recommended to start)
+3. Make your selections (points or box)
+4. Click "Generate Mask" to create the initial mask
+5. Use Paint mode to refine the mask if needed
+6. Generate masks on additional frames for better results
+7. Click "Confirm & Save" when satisfied
+
+💡 TIPS
+
+• Generate masks on frames with clear subject visibility
+• Use multiple frames for complex movements or shape changes
+• Point mode works best for objects with clear boundaries
+• Box mode is fastest for well-defined rectangular subjects
+• Paint mode is perfect for fine-tuning difficult areas
+• The system processes forward and backward from your keyframes automatically"""
+
+        create_message_dialog(
+            self.mask_window, 
+            "Mask Generator Help", 
+            help_text
+        )
         
     def load_settings(self):
         """Load user settings from file"""
