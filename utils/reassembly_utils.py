@@ -1,11 +1,13 @@
-# reassembly_utils.py - v1.1716987123
-# Updated: Tuesday, May 21, 2025 at 13:58:43 PST
+# reassembly_utils.py - v1.1737614400
+# Updated: Thursday, January 23, 2025 at 00:20:00 PST
 # Changes in this version:
-# - Fixed critical issue with max_alpha blend method not working correctly during chunk reassembly
-# - Added enhanced support for different blend methods in the chunk blending process
-# - Improved edge handling for max_alpha blending to prevent gray artifacts
-# - Added special optimization for max_alpha that prioritizes higher alpha values at every pixel
-# - Enhanced debugging visualization for different blend methods
+# - FIXED ROOT CAUSE of ringing artifacts: removed artificial value injection in empty areas
+# - Replaced aggressive cubic easing curves with simple linear transitions
+# - Removed unnecessary dilation operations that were expanding artifacts
+# - Added median filtering to alpha channel to clean up any remaining noise
+# - Added alpha thresholding to zero out low alpha values (< 15)
+# - Track which pixels are touched by chunks to avoid processing empty areas
+# - Only normalize pixels that were actually processed by chunks
 
 """
 Reassembly utilities for MatAnyone video processing.
@@ -196,47 +198,47 @@ def reassemble_strip_chunks(chunk_outputs, width, height, fps, frame_count, fgr_
             top_feather = max(1, top_feather // 3)
             bottom_feather = max(1, bottom_feather // 3)
         
-        # Apply left feathering if needed with more aggressive curve
+        # Apply left feathering if needed with smoother curve
         if left_feather > 0:
             for x in range(left_feather):
-                # Use a modified cubic ease that provides more gradual transition
+                # Use a simple linear transition to avoid ringing artifacts
                 t = x / left_feather
-                # More gradual transition near the edge
-                alpha = t * t * (3 - 2 * t) if t < 0.3 else 0.3 + (t - 0.3) * 1.4
+                # Simple linear fade
+                alpha = t
                 alpha = min(1.0, max(0.0, alpha))  # Clamp to [0,1]
                 weight[:, x] *= alpha
         
-        # Apply right feathering if needed with more aggressive curve
+        # Apply right feathering if needed with smoother curve
         if right_feather > 0:
             for x in range(right_feather):
                 idx = chunk_width - x - 1  # Right edge
                 if idx >= 0:  # Sanity check
-                    # Use a modified cubic ease that provides more gradual transition
+                    # Use a simple linear transition to avoid ringing artifacts
                     t = x / right_feather
-                    # More gradual transition near the edge
-                    alpha = t * t * (3 - 2 * t) if t < 0.3 else 0.3 + (t - 0.3) * 1.4
+                    # Simple linear fade
+                    alpha = t
                     alpha = min(1.0, max(0.0, alpha))  # Clamp to [0,1]
                     weight[:, idx] *= alpha
         
-        # Apply top feathering if needed with more aggressive curve
+        # Apply top feathering if needed with smoother curve
         if top_feather > 0:
             for y in range(top_feather):
-                # Use a modified cubic ease that provides more gradual transition
+                # Use a simple linear transition to avoid ringing artifacts
                 t = y / top_feather
-                # More gradual transition near the edge
-                alpha = t * t * (3 - 2 * t) if t < 0.3 else 0.3 + (t - 0.3) * 1.4
+                # Simple linear fade
+                alpha = t
                 alpha = min(1.0, max(0.0, alpha))  # Clamp to [0,1]
                 weight[y, :] *= alpha
         
-        # Apply bottom feathering if needed with more aggressive curve
+        # Apply bottom feathering if needed with smoother curve
         if bottom_feather > 0:
             for y in range(bottom_feather):
                 idx = chunk_height - y - 1  # Bottom edge
                 if idx >= 0:  # Sanity check
-                    # Use a modified cubic ease that provides more gradual transition
+                    # Use a simple linear transition to avoid ringing artifacts
                     t = y / bottom_feather
-                    # More gradual transition near the edge
-                    alpha = t * t * (3 - 2 * t) if t < 0.3 else 0.3 + (t - 0.3) * 1.4
+                    # Simple linear fade
+                    alpha = t
                     alpha = min(1.0, max(0.0, alpha))  # Clamp to [0,1]
                     weight[idx, :] *= alpha
         
@@ -251,10 +253,10 @@ def reassemble_strip_chunks(chunk_outputs, width, height, fps, frame_count, fgr_
                     for x in range(left_feather):
                         t_x = x / left_feather
                         t_y = y / top_feather
-                        # Use radial distance from corner for smoother corner blending
+                        # Use simple linear radial distance for corner blending
                         r = np.sqrt(t_x**2 + t_y**2) / np.sqrt(2)
-                        # Smooth transition based on radial distance
-                        alpha = r * r * (3 - 2 * r)
+                        # Simple linear transition based on radial distance
+                        alpha = r
                         weight[y, x] = min(weight[y, x], alpha)
             
             # Top-right corner
@@ -265,10 +267,10 @@ def reassemble_strip_chunks(chunk_outputs, width, height, fps, frame_count, fgr_
                         if idx_x >= 0:
                             t_x = x / right_feather
                             t_y = y / top_feather
-                            # Use radial distance from corner for smoother corner blending
+                            # Use simple linear radial distance for corner blending
                             r = np.sqrt(t_x**2 + t_y**2) / np.sqrt(2)
-                            # Smooth transition based on radial distance
-                            alpha = r * r * (3 - 2 * r)
+                            # Simple linear transition based on radial distance
+                            alpha = r
                             weight[y, idx_x] = min(weight[y, idx_x], alpha)
             
             # Bottom-left corner
@@ -279,10 +281,10 @@ def reassemble_strip_chunks(chunk_outputs, width, height, fps, frame_count, fgr_
                         for x in range(left_feather):
                             t_x = x / left_feather
                             t_y = y / bottom_feather
-                            # Use radial distance from corner for smoother corner blending
+                            # Use simple linear radial distance for corner blending
                             r = np.sqrt(t_x**2 + t_y**2) / np.sqrt(2)
-                            # Smooth transition based on radial distance
-                            alpha = r * r * (3 - 2 * r)
+                            # Simple linear transition based on radial distance
+                            alpha = r
                             weight[idx_y, x] = min(weight[idx_y, x], alpha)
             
             # Bottom-right corner
@@ -295,10 +297,10 @@ def reassemble_strip_chunks(chunk_outputs, width, height, fps, frame_count, fgr_
                             if idx_x >= 0:
                                 t_x = x / right_feather
                                 t_y = y / bottom_feather
-                                # Use radial distance from corner for smoother corner blending
+                                # Use simple linear radial distance for corner blending
                                 r = np.sqrt(t_x**2 + t_y**2) / np.sqrt(2)
-                                # Smooth transition based on radial distance
-                                alpha = r * r * (3 - 2 * r)
+                                # Simple linear transition based on radial distance
+                                alpha = r
                                 weight[idx_y, idx_x] = min(weight[idx_y, idx_x], alpha)
         
         # Expand to 3 channels for RGB blending
@@ -435,6 +437,9 @@ def reassemble_strip_chunks(chunk_outputs, width, height, fps, frame_count, fgr_
             fgr_weight_sum = np.zeros((height, width, 3), dtype=np.float32)
             pha_weight_sum = np.zeros((height, width, 3), dtype=np.float32)
             
+            # Track which pixels have been touched by any chunk
+            pixels_touched = np.zeros((height, width, 3), dtype=bool)
+            
             # Track maximum alpha mask for this frame
             max_alpha_mask = np.zeros((height, width), dtype=np.float32)
             
@@ -511,8 +516,9 @@ def reassemble_strip_chunks(chunk_outputs, width, height, fps, frame_count, fgr_
             # First, apply threshold to get binary mask for edge detection
             _, binary_mask = cv2.threshold(all_chunks_mask.astype(np.uint8), 20, 255, cv2.THRESH_BINARY)
             
-            # Apply dilation to fill small holes before edge detection
-            dilated_mask = cv2.dilate(binary_mask, np.ones((3, 3), np.uint8), iterations=1)
+            # Don't dilate to avoid expanding artifacts - use binary mask directly
+            # dilated_mask = cv2.dilate(binary_mask, np.ones((3, 3), np.uint8), iterations=1)
+            dilated_mask = binary_mask
             
             # Apply Canny edge detection with appropriate parameters
             # Lower threshold, higher threshold, and aperture size
@@ -531,8 +537,9 @@ def reassemble_strip_chunks(chunk_outputs, width, height, fps, frame_count, fgr_
                 # Combine edge maps, taking the maximum at each pixel
                 edge_map = np.maximum(edge_map, global_edges)
             
-            # Dilate the edge map slightly to ensure edges are fully covered
-            edge_map = cv2.dilate(edge_map, np.ones((3, 3), np.uint8), iterations=1)
+            # REDUCED: Don't dilate edge map to prevent expanding artifacts
+            # The original edge detection is sufficient
+            # edge_map = cv2.dilate(edge_map, np.ones((3, 3), np.uint8), iterations=1)
             
             # Save edge map for debugging if first frame
             if frame_idx == 0 and temp_dir:
@@ -548,8 +555,8 @@ def reassemble_strip_chunks(chunk_outputs, width, height, fps, frame_count, fgr_
                 cv2.imwrite(all_chunks_path, all_chunks_mask.astype(np.uint8))
             
             # ENHANCED: Also identify interior regions of the mask that should always be filled
-            # Dilate the binary mask substantially and then subtract the edge regions
-            mask_interior = cv2.dilate(binary_mask, np.ones((7, 7), np.uint8), iterations=1)
+            # Use minimal dilation to avoid expanding artifacts
+            mask_interior = cv2.dilate(binary_mask, np.ones((3, 3), np.uint8), iterations=1)
             # Subtract the edge regions
             mask_interior[edge_map > 0] = 0
             
@@ -706,6 +713,9 @@ def reassemble_strip_chunks(chunk_outputs, width, height, fps, frame_count, fgr_
                         max_alpha_values[region_slice_y, region_slice_x] = region_max_alpha
                         has_alpha_content[region_slice_y, region_slice_x] = region_has_alpha
                         
+                        # Mark these pixels as touched
+                        pixels_touched[region_slice_y, region_slice_x] = True
+                        
                     else:
                         # For weighted/average/min_alpha blend methods, use standard weighted approach
                         
@@ -846,20 +856,10 @@ def reassemble_strip_chunks(chunk_outputs, width, height, fps, frame_count, fgr_
                                     current_fgr_weight[:,:,c][interior_with_content] += boosted_weight[:,:,c][interior_with_content]
                                     current_pha_weight[:,:,c][interior_with_content] += boosted_weight[:,:,c][interior_with_content]
                             
-                            # Interior without content - use background neutral color with minimum alpha
-                            # This prevents black artifacts in regions that should be filled but this chunk doesn't have content
-                            if np.any(interior_without_content):
-                                for c in range(3):
-                                    # For alpha, we'll use a small value to ensure it's not completely transparent
-                                    # but still allows other chunks to contribute more substantial content
-                                    current_pha[:,:,c][interior_without_content] += 5 * chunk_weight[:,:,c][interior_without_content]
-                                    
-                                    # For foreground, use a neutral gray value to avoid black artifacts
-                                    current_fgr[:,:,c][interior_without_content] += 128 * chunk_weight[:,:,c][interior_without_content]
-                                    
-                                    # Add to weight sum for normalization
-                                    current_fgr_weight[:,:,c][interior_without_content] += chunk_weight[:,:,c][interior_without_content]
-                                    current_pha_weight[:,:,c][interior_without_content] += chunk_weight[:,:,c][interior_without_content]
+                            # Interior without content - DO NOT add any values
+                            # If a chunk doesn't have content in an area, it shouldn't contribute anything
+                            # This was causing the ringing artifacts by adding noise to empty areas
+                            pass
                         
                         # For non-edge, non-interior areas - use standard weighted addition
                         non_special = ~(edge_pixels | interior_pixels)
@@ -882,6 +882,9 @@ def reassemble_strip_chunks(chunk_outputs, width, height, fps, frame_count, fgr_
                         pha_canvas[region_slice_y, region_slice_x] = current_pha
                         fgr_weight_sum[region_slice_y, region_slice_x] = current_fgr_weight
                         pha_weight_sum[region_slice_y, region_slice_x] = current_pha_weight
+                        
+                        # Mark these pixels as touched
+                        pixels_touched[region_slice_y, region_slice_x] = True
                     
                 except Exception as e:
                     print(f"Error blending chunk {i} at position {(start_x, start_y)}-({end_x, end_y}): {str(e)}")
@@ -918,7 +921,7 @@ def reassemble_strip_chunks(chunk_outputs, width, height, fps, frame_count, fgr_
                 # For foreground - use different thresholds for different regions
                 fgr_edge_threshold = 0.05
                 fgr_interior_threshold = 0.01
-                fgr_other_threshold = 0.01
+                fgr_other_threshold = 0.001  # Reduced to prevent artifacts in empty areas
                 
                 # Apply minimum threshold to weights to avoid division by zero
                 # But use different thresholds for different regions
@@ -931,26 +934,32 @@ def reassemble_strip_chunks(chunk_outputs, width, height, fps, frame_count, fgr_
                     fgr_weight_sum_safe[~edge_mask_3ch & ~interior_mask_3ch], fgr_other_threshold
                 )
                 
-                # Normalize foreground
-                fgr_output = fgr_canvas / fgr_weight_sum_safe
+                # Initialize outputs as zeros
+                fgr_output = np.zeros((height, width, 3), dtype=np.float32)
+                pha_output = np.zeros((height, width, 3), dtype=np.float32)
                 
-                # For alpha - use similar approach with different thresholds
-                pha_edge_threshold = 0.05
-                pha_interior_threshold = 0.01
-                pha_other_threshold = 0.01
-                
-                # Apply minimum threshold to weights to avoid division by zero
-                pha_weight_sum_safe = pha_weight_sum.copy()
-                pha_weight_sum_safe[edge_mask_3ch] = np.maximum(pha_weight_sum_safe[edge_mask_3ch], pha_edge_threshold)
-                pha_weight_sum_safe[interior_mask_3ch & ~edge_mask_3ch] = np.maximum(
-                    pha_weight_sum_safe[interior_mask_3ch & ~edge_mask_3ch], pha_interior_threshold
-                )
-                pha_weight_sum_safe[~edge_mask_3ch & ~interior_mask_3ch] = np.maximum(
-                    pha_weight_sum_safe[~edge_mask_3ch & ~interior_mask_3ch], pha_other_threshold
-                )
-                
-                # Normalize alpha
-                pha_output = pha_canvas / pha_weight_sum_safe
+                # Only normalize pixels that were touched by chunks
+                if np.any(pixels_touched):
+                    # Normalize foreground only where touched
+                    fgr_output[pixels_touched] = fgr_canvas[pixels_touched] / fgr_weight_sum_safe[pixels_touched]
+                    
+                    # For alpha - use similar approach with different thresholds
+                    pha_edge_threshold = 0.05
+                    pha_interior_threshold = 0.01
+                    pha_other_threshold = 0.001  # Reduced to prevent artifacts in empty areas
+                    
+                    # Apply minimum threshold to weights to avoid division by zero
+                    pha_weight_sum_safe = pha_weight_sum.copy()
+                    pha_weight_sum_safe[edge_mask_3ch] = np.maximum(pha_weight_sum_safe[edge_mask_3ch], pha_edge_threshold)
+                    pha_weight_sum_safe[interior_mask_3ch & ~edge_mask_3ch] = np.maximum(
+                        pha_weight_sum_safe[interior_mask_3ch & ~edge_mask_3ch], pha_interior_threshold
+                    )
+                    pha_weight_sum_safe[~edge_mask_3ch & ~interior_mask_3ch] = np.maximum(
+                        pha_weight_sum_safe[~edge_mask_3ch & ~interior_mask_3ch], pha_other_threshold
+                    )
+                    
+                    # Normalize alpha only where touched
+                    pha_output[pixels_touched] = pha_canvas[pixels_touched] / pha_weight_sum_safe[pixels_touched]
                 
                 # For min_alpha blend method, apply additional reduction at the end
                 if blend_method == 'min_alpha':
@@ -974,17 +983,18 @@ def reassemble_strip_chunks(chunk_outputs, width, height, fps, frame_count, fgr_
                     frame_mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
                     
                     if frame_mask is not None:
-                        # Expand the mask slightly to include edge area (prevent edge artifacts)
-                        kernel_size = 7  # Slightly larger dilation to better fill interior
-                        kernel = np.ones((kernel_size, kernel_size), np.uint8)
-                        expanded_mask = cv2.dilate(frame_mask, kernel, iterations=1)
+                        # Don't expand the mask - use it as is to avoid artifacts
+                        # kernel_size = 7  # Slightly larger dilation to better fill interior
+                        # kernel = np.ones((kernel_size, kernel_size), np.uint8)
+                        # expanded_mask = cv2.dilate(frame_mask, kernel, iterations=1)
+                        expanded_mask = frame_mask  # Use original mask without dilation
                         
                         # Convert to float32 and normalize to 0-1
                         mask_float = expanded_mask.astype(np.float32) / 255.0
                         
-                        # Apply slight blur to prevent hard mask edges
+                        # Apply minimal blur to prevent hard mask edges
                         # This helps preserve feathered edges from chunk blending
-                        mask_float = cv2.GaussianBlur(mask_float, (7, 7), 0)
+                        mask_float = cv2.GaussianBlur(mask_float, (3, 3), 0)
                         
                         # ENHANCED: Create an edge map for the expanded mask
                         # This lets us avoid modifying the precise alpha edges
@@ -1064,6 +1074,20 @@ def reassemble_strip_chunks(chunk_outputs, width, height, fps, frame_count, fgr_
             # Convert to uint8
             fgr_output = np.clip(fgr_output, 0, 255).astype(np.uint8)
             pha_output = np.clip(pha_output, 0, 255).astype(np.uint8)
+            
+            # Apply median filter to alpha channel to remove any ringing artifacts
+            # This helps clean up any noise around edges
+            for c in range(3):
+                pha_output[:,:,c] = cv2.medianBlur(pha_output[:,:,c], 3)
+            
+            # Apply threshold to completely zero out low alpha values
+            # This removes the ringing artifacts that appear in low-alpha regions
+            alpha_threshold = 15  # Values below this will be set to 0
+            pha_mask = pha_output > alpha_threshold
+            pha_output = pha_output * pha_mask.astype(np.uint8)
+            
+            # Also zero out the foreground where alpha is zero to ensure consistency
+            fgr_output = fgr_output * pha_mask.astype(np.uint8)
             
             # Write frames
             fgr_writer.write(fgr_output)

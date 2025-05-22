@@ -83,7 +83,9 @@ class ConfigManager:
                 'video_codec': app.video_codec.get(),
                 'video_quality': app.video_quality.get(),
                 'custom_bitrate_enabled': app.custom_bitrate_enabled.get(),
-                'custom_bitrate': app.custom_bitrate.get()
+                'custom_bitrate': app.custom_bitrate.get(),
+                # Mask generator settings
+                'mask_brush_size': getattr(app, 'mask_brush_size', 5)
             }
             
             # Save to file
@@ -194,6 +196,10 @@ class ConfigManager:
                 
             if 'custom_bitrate' in settings:
                 app.custom_bitrate.set(settings['custom_bitrate'])
+            
+            # Load mask generator settings
+            if 'mask_brush_size' in settings:
+                app.mask_brush_size = settings['mask_brush_size']
                 
             # Update UI based on loaded settings
             app.toggle_enhanced_options()

@@ -1,11 +1,11 @@
-# gui_events.py - v1.1747787882
-# Updated: Tuesday, May 20, 2025 at 17:38:02 PST
+# gui_events.py - v1.1748000000
+# Updated: Thursday, May 22, 2025 at 08:56:00 PDT
 # Changes in this version:
-# - Updated help text to document frame navigation improvements
-# - Added information about fixed frame resizing when scrubbing timeline
-# - Added details about improved "fit to window" mode
-# - Documented better aspect ratio handling during frame changes
-# - Updated mask generator ui reference section with latest fixes
+# - Added keyframe metadata system documentation to help text
+# - Implemented keyframe status display under mask input
+# - Added automatic keyframe metadata checking when masks are selected or generated
+# - Updated GUI to show "Frame [N] being used" for masks with keyframe metadata
+# - Enhanced mask browsing and generation callbacks to update keyframe status
 
 """
 Event handling for MatAnyone GUI.
@@ -129,6 +129,31 @@ class EventHandler:
         if filename:
             self.app.mask_path.set(filename)
             print(f"Selected mask: {filename}")
+            
+            # Check for keyframe metadata and update status
+            self.update_keyframe_status(filename)
+
+    def update_keyframe_status(self, mask_path):
+        """Update the keyframe status display based on mask metadata"""
+        try:
+            from mask.mask_utils import get_keyframe_metadata_from_mask
+            keyframe = get_keyframe_metadata_from_mask(mask_path)
+            
+            if keyframe is not None:
+                self.app.keyframe_status.set(f"Frame {keyframe} being used")
+                print(f"Mask contains keyframe metadata: frame {keyframe}")
+            else:
+                self.app.keyframe_status.set("")  # Clear the status
+                
+        except Exception as e:
+            print(f"Error checking keyframe metadata: {e}")
+            self.app.keyframe_status.set("")  # Clear the status on error
+
+    def check_existing_mask_keyframe(self):
+        """Check keyframe metadata for existing mask path (called on app startup)"""
+        mask_path = self.app.mask_path.get()
+        if mask_path and os.path.exists(mask_path):
+            self.update_keyframe_status(mask_path)
 
     def generate_mask(self):
         """Open the SAM mask generator interface"""
@@ -153,6 +178,9 @@ class EventHandler:
                 if mask_path and os.path.exists(mask_path):
                     self.app.mask_path.set(mask_path)
                     print(f"Mask generated and set: {mask_path}")
+                    
+                    # Update keyframe status for newly generated mask
+                    self.update_keyframe_status(mask_path)
             
             # Determine mask save path
             video_name = os.path.basename(self.app.video_path.get())
@@ -168,12 +196,13 @@ class EventHandler:
                 print("Opening SAM mask generator interface...")
                 
                 # Create the mask generator UI
-                mask_generator = MaskGeneratorUI(self.app.root, on_mask_generated=on_mask_generated)
+                mask_generator = MaskGeneratorUI(self.app.root, on_mask_generated=on_mask_generated, main_app=self.app)
                 
                 # Open the mask generator window
                 mask_generator.open_mask_generator(
                     video_path=self.app.video_path.get(),
-                    mask_save_path=mask_save_path
+                    mask_save_path=mask_save_path,
+                    existing_mask_path=self.app.mask_path.get()
                 )
             else:
                 # Fall back to command-line version
@@ -376,7 +405,19 @@ Output:
 - Enhanced chunk results include "enhanced" in the filename
 - All videos are now encoded with high-quality settings for better results
 
+Keyframe Metadata System (NEW):
+- Masks generated on frames other than 0 now store keyframe metadata
+- When a mask with keyframe metadata is used, enhanced chunk processing uses a specialized approach:
+  * Cuts the video at the keyframe as the pivot point
+  * Processes forward from keyframe to end
+  * Processes backward from keyframe to start
+  * Recombines with perfect frame alignment to avoid sequence corruption
+- Frame 0 masks continue to work exactly as before (no behavior change)
+- The GUI will display "Frame [N] being used" under masks with keyframe metadata
+- This results in better temporal consistency for masks generated on specific frames
+
 New in this version:
+- NEW! Keyframe metadata system for intelligent mask-based processing
 - Improved auto-chunk mode to automatically calculate optimal number of chunks
 - The Number of Chunks input is now disabled when Auto-chunk mode is enabled
 - Each chunk will match the low-res dimensions with appropriate overlap

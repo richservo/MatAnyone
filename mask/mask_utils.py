@@ -9,6 +9,8 @@ import os
 import cv2
 import numpy as np
 import traceback
+from PIL import Image
+from PIL.PngImagePlugin import PngInfo
 
 
 def generate_mask_for_video(video_path, output_mask_path=None, model_type="vit_b"):
@@ -125,4 +127,69 @@ def create_empty_mask(output_path, width, height, value=0):
         return output_path
     except Exception as e:
         print(f"Error creating empty mask: {str(e)}")
+        return None
+
+
+def add_keyframe_metadata_to_mask(mask_path, keyframe_number, output_path=None):
+    """
+    Add keyframe metadata to a PNG mask file
+    
+    Args:
+        mask_path: Path to the input mask
+        keyframe_number: Frame number to store as keyframe metadata
+        output_path: Path to save the mask with metadata (if None, overwrites original)
+        
+    Returns:
+        Path to the mask with metadata
+    """
+    try:
+        if output_path is None:
+            output_path = mask_path
+            
+        # Open the image
+        img = Image.open(mask_path)
+        
+        # Create PNG metadata
+        metadata = PngInfo()
+        metadata.add_text("keyframe", str(keyframe_number))
+        
+        # Save with metadata
+        img.save(output_path, "PNG", pnginfo=metadata)
+        
+        print(f"Added keyframe metadata: frame {keyframe_number} to {output_path}")
+        return output_path
+        
+    except Exception as e:
+        print(f"Error adding keyframe metadata: {str(e)}")
+        traceback.print_exc()
+        return mask_path  # Return original path if failed
+
+
+def get_keyframe_metadata_from_mask(mask_path):
+    """
+    Read keyframe metadata from a PNG mask file
+    
+    Args:
+        mask_path: Path to the mask image
+        
+    Returns:
+        int or None: Keyframe number if found, None if no metadata exists
+    """
+    try:
+        # Open the image
+        img = Image.open(mask_path)
+        
+        # Get metadata
+        if hasattr(img, 'text') and img.text:
+            keyframe_str = img.text.get("keyframe")
+            if keyframe_str:
+                keyframe_number = int(keyframe_str)
+                print(f"Found keyframe metadata: frame {keyframe_number} in {mask_path}")
+                return keyframe_number
+        
+        # No metadata found
+        return None
+        
+    except Exception as e:
+        print(f"Error reading keyframe metadata: {str(e)}")
         return None

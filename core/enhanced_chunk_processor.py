@@ -246,6 +246,15 @@ def process_video_with_enhanced_chunking(processor, input_path, mask_path, outpu
         if original_mask is None:
             raise ValueError(f"Could not read mask: {mask_path}")
         
+        # Check for keyframe metadata in mask
+        from mask.mask_utils import get_keyframe_metadata_from_mask
+        keyframe_number = get_keyframe_metadata_from_mask(mask_path)
+        
+        if keyframe_number is not None:
+            print(f"Found keyframe metadata: frame {keyframe_number}. Using keyframe-based Step 1 processing.")
+        else:
+            print("No keyframe metadata found. Using standard Step 1 processing.")
+        
         # Resize mask using mask_operations
         mask_operations = [
             {
@@ -268,7 +277,6 @@ def process_video_with_enhanced_chunking(processor, input_path, mask_path, outpu
         check_for_interrupt()
         
         # Process the low-res video bidirectionally to create a continuous mask
-        print("Processing low-resolution video bidirectionally to create continuous mask...")
         low_res_process_params = kwargs.copy()
         
         # Override parameters for low-res processing
@@ -276,97 +284,207 @@ def process_video_with_enhanced_chunking(processor, input_path, mask_path, outpu
             'max_size': -1,  # Use native resolution since it's already low-res
             'save_image': False,  # Don't save individual frames for low-res version
             'suffix': 'low_res',
-            'bidirectional': True,  # Always use bidirectional for low-res
+            'bidirectional': False,  # We handle bidirectional manually
             'blend_method': blend_method if lowres_blend_method is None else lowres_blend_method
         })
         
         # Process low-res video - clear cache first to ensure clean state
-        clear_gpu_memory(processor, force_full_cleanup=True)  # Updated with force_full_cleanup
+        clear_gpu_memory(processor, force_full_cleanup=True)
         
-        # Check for interrupt before forward pass
+        # Check for interrupt before processing
         check_for_interrupt()
         
-        # Process the low-res video bidirectionally
-        print("Processing low-res forward pass...")
-        
-        # Forward pass
-        forward_params = low_res_process_params.copy()
-        forward_params['suffix'] = 'low_res_forward'
-        forward_params['bidirectional'] = False  # Turn off bidirectional flag since we're manually doing both passes
-        
-        low_res_fgr_forward, low_res_pha_forward = processor.process_video(
-            input_path=low_res_video_path,
-            mask_path=low_res_mask_path,  # Use the low-res mask for forward pass
-            output_path=temp_dir,
-            **forward_params
-        )
-        
-        # Clear memory before reverse pass
-        clear_gpu_memory(processor, force_full_cleanup=True)  # Updated with force_full_cleanup
-        
-        # Check for interrupt before reverse pass
-        check_for_interrupt()
-        
-        print("Processing low-res reverse pass...")
-        
-        # Create reversed video for backward pass
-        low_res_reversed_path = os.path.join(temp_dir, f"{video_name}_low_res_reversed.mp4")
-        video_processor.reverse_video(low_res_video_path, low_res_reversed_path)
-        temp_files.append(low_res_reversed_path)
-        
-        # Get last frame from forward pass to use as mask for reverse pass
-        last_frame_mask_path = extract_last_frame(low_res_pha_forward, temp_dir, f"{video_name}_low_res_last_frame")
-        
-        # Dilate the mask for reverse pass if requested using mask_operations
-        if reverse_dilate > 0:
-            dilated_mask_path = os.path.join(temp_dir, f"{video_name}_low_res_dilated_mask.png")
-            dilate_mask(last_frame_mask_path, dilated_mask_path, reverse_dilate)
-            last_frame_mask_path = dilated_mask_path
-            temp_files.append(dilated_mask_path)
-        
-        temp_files.append(last_frame_mask_path)
-        
-        # Process the reversed low-res video
-        reverse_params = low_res_process_params.copy()
-        reverse_params['suffix'] = 'low_res_reverse'
-        reverse_params['bidirectional'] = False
-        
-        low_res_fgr_reverse, low_res_pha_reverse = processor.process_video(
-            input_path=low_res_reversed_path,
-            mask_path=last_frame_mask_path,  # Use the last frame from forward pass as mask for reverse
-            output_path=temp_dir,
-            **reverse_params
-        )
-        
-        # Re-reverse the output using VideoProcessor
-        low_res_fgr_re_reversed = os.path.join(temp_dir, f"{video_name}_low_res_re_reversed_fgr.mp4")
-        low_res_pha_re_reversed = os.path.join(temp_dir, f"{video_name}_low_res_re_reversed_pha.mp4")
-        
-        video_processor.reverse_video(low_res_fgr_reverse, low_res_fgr_re_reversed)
-        video_processor.reverse_video(low_res_pha_reverse, low_res_pha_re_reversed)
-        
-        temp_files.extend([
-            low_res_fgr_forward, low_res_pha_forward,
-            low_res_fgr_reverse, low_res_pha_reverse,
-            low_res_fgr_re_reversed, low_res_pha_re_reversed
-        ])
-        
-        # Check for interrupt before blending
-        check_for_interrupt()
-        
-        # Blend forward and reverse passes using VideoProcessor
-        print("Blending low-res passes...")
-        
-        # Use separate blending method for low-res if specified, otherwise use the main blend method
-        lowres_blend = lowres_blend_method if lowres_blend_method is not None else blend_method
-        print(f"Using '{lowres_blend}' blending method for low-resolution mask")
+        if keyframe_number is not None:
+            # NEW KEYFRAME-BASED STEP 1 LOGIC
+            print(f"Processing low-resolution video with keyframe {keyframe_number} as pivot point...")
             
-        low_res_fgr_blended = os.path.join(temp_dir, f"{video_name}_low_res_fgr_blended.mp4")
-        low_res_pha_blended = os.path.join(temp_dir, f"{video_name}_low_res_pha_blended.mp4")
-        
-        # Use video_processor for blending
-        blend_videos(low_res_fgr_forward, low_res_fgr_re_reversed, low_res_fgr_blended, lowres_blend)
-        blend_videos(low_res_pha_forward, low_res_pha_re_reversed, low_res_pha_blended, lowres_blend)
+            # Cut video into two segments at keyframe
+            keyframe_start_segment = os.path.join(temp_dir, f"{video_name}_low_res_start_to_keyframe.mp4")
+            keyframe_end_segment = os.path.join(temp_dir, f"{video_name}_low_res_keyframe_to_end.mp4")
+            temp_files.extend([keyframe_start_segment, keyframe_end_segment])
+            
+            # Extract keyframe->end segment (forward processing)
+            print(f"Extracting keyframe->end segment (frames {keyframe_number} to {frame_count-1})")
+            video_processor.extract_chunk(
+                input_path=low_res_video_path,
+                output_path=keyframe_end_segment,
+                start_frame=keyframe_number,
+                end_frame=frame_count
+            )
+            
+            # Extract start->keyframe segment (backward processing)
+            print(f"Extracting start->keyframe segment (frames 0 to {keyframe_number})")
+            video_processor.extract_chunk(
+                input_path=low_res_video_path,
+                output_path=keyframe_start_segment,
+                start_frame=0,
+                end_frame=keyframe_number + 1
+            )
+            
+            # Process keyframe->end segment forward
+            print("Processing keyframe->end segment forward...")
+            forward_params = low_res_process_params.copy()
+            forward_params['suffix'] = 'low_res_forward'
+            
+            low_res_fgr_forward, low_res_pha_forward = processor.process_video(
+                input_path=keyframe_end_segment,
+                mask_path=low_res_mask_path,
+                output_path=temp_dir,
+                **forward_params
+            )
+            
+            # Clear memory before backward processing
+            clear_gpu_memory(processor, force_full_cleanup=True)
+            
+            # Check for interrupt before backward processing
+            check_for_interrupt()
+            
+            # Process start->keyframe segment backward (reverse video first)
+            print("Processing start->keyframe segment backward...")
+            keyframe_start_reversed = os.path.join(temp_dir, f"{video_name}_low_res_start_to_keyframe_reversed.mp4")
+            video_processor.reverse_video(keyframe_start_segment, keyframe_start_reversed)
+            temp_files.append(keyframe_start_reversed)
+            
+            reverse_params = low_res_process_params.copy()
+            reverse_params['suffix'] = 'low_res_reverse'
+            
+            low_res_fgr_reverse, low_res_pha_reverse = processor.process_video(
+                input_path=keyframe_start_reversed,
+                mask_path=low_res_mask_path,
+                output_path=temp_dir,
+                **reverse_params
+            )
+            
+            # Re-reverse the backward segment to correct temporal order
+            low_res_fgr_backward_corrected = os.path.join(temp_dir, f"{video_name}_low_res_backward_corrected_fgr.mp4")
+            low_res_pha_backward_corrected = os.path.join(temp_dir, f"{video_name}_low_res_backward_corrected_pha.mp4")
+            
+            video_processor.reverse_video(low_res_fgr_reverse, low_res_fgr_backward_corrected)
+            video_processor.reverse_video(low_res_pha_reverse, low_res_pha_backward_corrected)
+            
+            temp_files.extend([
+                low_res_fgr_forward, low_res_pha_forward,
+                low_res_fgr_reverse, low_res_pha_reverse,
+                low_res_fgr_backward_corrected, low_res_pha_backward_corrected
+            ])
+            
+            # Recombine segments ensuring no duplicate keyframe
+            print("Recombining segments with perfect frame alignment...")
+            low_res_fgr_blended = os.path.join(temp_dir, f"{video_name}_low_res_fgr_blended.mp4")
+            low_res_pha_blended = os.path.join(temp_dir, f"{video_name}_low_res_pha_blended.mp4")
+            
+            # Concatenate: backward_corrected (0 to keyframe-1) + forward (keyframe to end)
+            # Extract frames 0 to keyframe-1 from backward_corrected
+            backward_trimmed_fgr = os.path.join(temp_dir, f"{video_name}_backward_trimmed_fgr.mp4")
+            backward_trimmed_pha = os.path.join(temp_dir, f"{video_name}_backward_trimmed_pha.mp4")
+            
+            if keyframe_number > 0:
+                video_processor.extract_chunk(
+                    input_path=low_res_fgr_backward_corrected,
+                    output_path=backward_trimmed_fgr,
+                    start_frame=0,
+                    end_frame=keyframe_number
+                )
+                video_processor.extract_chunk(
+                    input_path=low_res_pha_backward_corrected,
+                    output_path=backward_trimmed_pha,
+                    start_frame=0,
+                    end_frame=keyframe_number
+                )
+                
+                # Concatenate backward_trimmed + forward
+                concatenate_videos([backward_trimmed_fgr, low_res_fgr_forward], low_res_fgr_blended)
+                concatenate_videos([backward_trimmed_pha, low_res_pha_forward], low_res_pha_blended)
+                
+                temp_files.extend([backward_trimmed_fgr, backward_trimmed_pha])
+            else:
+                # If keyframe is 0, just use forward segment
+                low_res_fgr_blended = low_res_fgr_forward
+                low_res_pha_blended = low_res_pha_forward
+                
+        else:
+            # STANDARD STEP 1 LOGIC (no keyframe metadata)
+            print("Processing low-resolution video bidirectionally to create continuous mask...")
+            
+            # Process the low-res video bidirectionally
+            print("Processing low-res forward pass...")
+            
+            # Forward pass
+            forward_params = low_res_process_params.copy()
+            forward_params['suffix'] = 'low_res_forward'
+            
+            low_res_fgr_forward, low_res_pha_forward = processor.process_video(
+                input_path=low_res_video_path,
+                mask_path=low_res_mask_path,  # Use the low-res mask for forward pass
+                output_path=temp_dir,
+                **forward_params
+            )
+            
+            # Clear memory before reverse pass
+            clear_gpu_memory(processor, force_full_cleanup=True)
+            
+            # Check for interrupt before reverse pass
+            check_for_interrupt()
+            
+            print("Processing low-res reverse pass...")
+            
+            # Create reversed video for backward pass
+            low_res_reversed_path = os.path.join(temp_dir, f"{video_name}_low_res_reversed.mp4")
+            video_processor.reverse_video(low_res_video_path, low_res_reversed_path)
+            temp_files.append(low_res_reversed_path)
+            
+            # Get last frame from forward pass to use as mask for reverse pass
+            last_frame_mask_path = extract_last_frame(low_res_pha_forward, temp_dir, f"{video_name}_low_res_last_frame")
+            
+            # Dilate the mask for reverse pass if requested using mask_operations
+            if reverse_dilate > 0:
+                dilated_mask_path = os.path.join(temp_dir, f"{video_name}_low_res_dilated_mask.png")
+                dilate_mask(last_frame_mask_path, dilated_mask_path, reverse_dilate)
+                last_frame_mask_path = dilated_mask_path
+                temp_files.append(dilated_mask_path)
+            
+            temp_files.append(last_frame_mask_path)
+            
+            # Process the reversed low-res video
+            reverse_params = low_res_process_params.copy()
+            reverse_params['suffix'] = 'low_res_reverse'
+            
+            low_res_fgr_reverse, low_res_pha_reverse = processor.process_video(
+                input_path=low_res_reversed_path,
+                mask_path=last_frame_mask_path,  # Use the last frame from forward pass as mask for reverse
+                output_path=temp_dir,
+                **reverse_params
+            )
+            
+            # Re-reverse the output using VideoProcessor
+            low_res_fgr_re_reversed = os.path.join(temp_dir, f"{video_name}_low_res_re_reversed_fgr.mp4")
+            low_res_pha_re_reversed = os.path.join(temp_dir, f"{video_name}_low_res_re_reversed_pha.mp4")
+            
+            video_processor.reverse_video(low_res_fgr_reverse, low_res_fgr_re_reversed)
+            video_processor.reverse_video(low_res_pha_reverse, low_res_pha_re_reversed)
+            
+            temp_files.extend([
+                low_res_fgr_forward, low_res_pha_forward,
+                low_res_fgr_reverse, low_res_pha_reverse,
+                low_res_fgr_re_reversed, low_res_pha_re_reversed
+            ])
+            
+            # Check for interrupt before blending
+            check_for_interrupt()
+            
+            # Blend forward and reverse passes using VideoProcessor
+            print("Blending low-res passes...")
+            
+            # Use separate blending method for low-res if specified, otherwise use the main blend method
+            lowres_blend = lowres_blend_method if lowres_blend_method is not None else blend_method
+            print(f"Using '{lowres_blend}' blending method for low-resolution mask")
+                
+            low_res_fgr_blended = os.path.join(temp_dir, f"{video_name}_low_res_fgr_blended.mp4")
+            low_res_pha_blended = os.path.join(temp_dir, f"{video_name}_low_res_pha_blended.mp4")
+            
+            # Use video_processor for blending
+            blend_videos(low_res_fgr_forward, low_res_fgr_re_reversed, low_res_fgr_blended, lowres_blend)
+            blend_videos(low_res_pha_forward, low_res_pha_re_reversed, low_res_pha_blended, lowres_blend)
         
         temp_files.extend([low_res_fgr_blended, low_res_pha_blended])
         
@@ -768,17 +886,19 @@ def process_video_with_enhanced_chunking(processor, input_path, mask_path, outpu
                         fps
                     )
                     
-                    # Create mask from full_res_mask_dir using the end frame of this segment
-                    # which is the first frame of the reversed segment (end of range)
+                    # Create mask from full_res_mask_dir using the actual first frame of reversed segment
+                    # extract_chunk_frame_range_reversed extracts [start_frame, keyframe) then reverses
+                    # So first frame of reversed video is (keyframe-1)
+                    backward_first_frame = keyframe - 1
                     backward_mask_path = create_optimal_mask_for_range(
                         original_mask, 
                         full_res_mask_dir,
-                        keyframe,  # Use keyframe as mask for backward pass
+                        backward_first_frame,  # Use the actual first frame of the reversed segment
                         start_x,
                         end_x,
                         start_y,
                         end_y,
-                        os.path.join(chunk_output_dir, f"range_{range_idx}_backward_mask_{keyframe}.png")
+                        os.path.join(chunk_output_dir, f"range_{range_idx}_backward_mask_{backward_first_frame}.png")
                     )
                     
                     # Get a processor from cache or create new one

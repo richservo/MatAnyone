@@ -48,6 +48,8 @@ class MaskUIBase:
         self.mask_window = None
         self.canvas = None
         self.tk_image = None
+        self._updating_slider = False
+        self.mask_generated_frames = set()  # Track frames where masks have been generated
         self.overlay_image = None
         self.image = None
         self.display_frame = None
@@ -343,9 +345,22 @@ class MaskUIBase:
         # Create a list of brush sizes
         brush_sizes = [1, 3, 5, 10, 15, 20, 30, 50]
         self.brush_size_combo = ttk.Combobox(brush_size_frame, values=brush_sizes, width=5)
-        self.brush_size_combo.current(2)  # Default to 5px
+        
+        # Set brush size from main app config if available
+        if hasattr(self, 'main_app') and self.main_app:
+            try:
+                saved_size = self.main_app.mask_brush_size
+                if saved_size in brush_sizes:
+                    self.brush_size_combo.set(saved_size)
+                else:
+                    self.brush_size_combo.current(2)  # Default to 5px
+            except:
+                self.brush_size_combo.current(2)  # Default to 5px
+        else:
+            self.brush_size_combo.current(2)  # Default to 5px
+            
         self.brush_size_combo.pack(side=tk.LEFT, padx=5)
-        self.brush_size_combo.bind("<<ComboboxSelected>>", self.interactions.update_brush_size)
+        self.brush_size_combo.bind("<<ComboboxSelected>>", self._on_brush_size_changed)
         
         # Keyboard shortcuts help
         ttk.Label(brush_size_frame, text="(Use [ and ] keys to adjust size)").pack(side=tk.LEFT, padx=5)
@@ -417,11 +432,22 @@ class MaskUIBase:
                                          command=lambda: self.frame_manager.navigate_frame(-1))
         self.prev_frame_button.pack(side=tk.LEFT, padx=5)
         
-        # Frame slider
-        self.frame_slider = tk.Scale(navigation_frame, from_=0, to=self.total_frames-1, 
-                                   orient=tk.HORIZONTAL, showvalue=False, 
-                                   command=self.frame_manager.on_slider_changed)
-        self.frame_slider.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=10)
+        # Frame slider with hashmarks
+        slider_container = ttk.Frame(navigation_frame)
+        slider_container.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=10)
+        
+        self.frame_slider = ttk.Scale(slider_container, from_=0, to=self.total_frames-1, 
+                                    orient=tk.HORIZONTAL,
+                                    command=self._on_slider_changed_discrete)
+        self.frame_slider.pack(fill=tk.X)
+        
+        # Create hashmarks canvas (no explicit background to match theme)
+        self.hashmarks_canvas = tk.Canvas(slider_container, height=30)
+        self.hashmarks_canvas.pack(fill=tk.X)
+        self.create_hashmarks()
+        
+        # Bind resize event to redraw hashmarks
+        self.hashmarks_canvas.bind('<Configure>', lambda e: self.create_hashmarks())
         
         # Next frame button
         self.next_frame_button = ttk.Button(navigation_frame, text="→", width=3,
@@ -448,11 +474,150 @@ class MaskUIBase:
         self.checkpoint_markers_frame = ttk.Frame(slider_frame)
         self.checkpoint_markers_frame.pack(fill=tk.X, pady=5)
     
+    def create_hashmarks(self, current_frame=None):
+        """Create hashmarks under the scrub bar"""
+        if not hasattr(self, 'hashmarks_canvas'):
+            return
+            
+        # Clear any existing hashmarks
+        self.hashmarks_canvas.delete("all")
+        
+        # Get canvas width after it's been packed
+        self.hashmarks_canvas.update_idletasks()
+        canvas_width = self.hashmarks_canvas.winfo_width()
+        
+        if canvas_width <= 1:  # Canvas not yet drawn
+            self.hashmarks_canvas.after(100, lambda: self.create_hashmarks(current_frame))
+            return
+        
+        # Calculate spacing between frames
+        if self.total_frames <= 1:
+            return
+            
+        frame_spacing = canvas_width / (self.total_frames - 1)
+        
+        # Get current frame if not provided
+        if current_frame is None and hasattr(self, 'current_frame'):
+            current_frame = self.current_frame
+        
+        # Draw hashmarks
+        for frame in range(self.total_frames):
+            x_pos = frame * frame_spacing
+            
+            # Determine color priority: red for mask generated, yellow for current, white/grey for normal
+            is_current = (current_frame is not None and frame == current_frame)
+            has_mask = frame in self.mask_generated_frames
+            
+            if has_mask:
+                color = "red"  # Persistent red for frames with generated masks
+            elif is_current:
+                color = "yellow"  # Yellow for current frame position (both long and short ticks)
+            else:
+                color = "white" if frame % 5 == 0 else "lightgray"  # Normal colors
+            
+            # Long hashmark every 5th frame (0, 5, 10, etc.)
+            if frame % 5 == 0:
+                # Long hashmark
+                self.hashmarks_canvas.create_line(x_pos, 0, x_pos, 15, fill=color, width=2)
+                # Frame number
+                self.hashmarks_canvas.create_text(x_pos, 22, text=str(frame), anchor="center", 
+                                                font=("Arial", 10, "bold"), fill=color)
+            else:
+                # Short hashmark
+                self.hashmarks_canvas.create_line(x_pos, 0, x_pos, 8, fill=color, width=1)
+    
+    def _on_slider_changed_discrete(self, value):
+        """Handle slider changes with discrete integer stepping"""
+        # Prevent recursion when we set the slider value
+        if self._updating_slider:
+            return
+            
+        # Convert to integer for discrete stepping
+        int_value = int(round(float(value)))
+        
+        # Set flag to prevent recursion and update slider to integer value
+        self._updating_slider = True
+        self.frame_slider.set(int_value)
+        self._updating_slider = False
+        
+        # Call the original callback with integer value
+        self.frame_manager.on_slider_changed(str(int_value))
+    
+    def mark_frame_with_mask(self, frame_index):
+        """Mark a frame as having a generated mask"""
+        self.mask_generated_frames.add(frame_index)
+        # Refresh hashmarks to show the red highlighting
+        self.create_hashmarks()
+    
+    def _on_brush_size_changed(self, event=None):
+        """Handle brush size change from combo box"""
+        # Update the interactions
+        self.interactions.update_brush_size(event)
+        
+        # Save to main app config if available
+        if hasattr(self, 'main_app') and self.main_app:
+            try:
+                brush_size = int(self.brush_size_combo.get())
+                self.main_app.mask_brush_size = brush_size
+                # Save settings to file
+                self.main_app.config_manager.save_settings(self.main_app)
+            except Exception as e:
+                print(f"Error saving brush size to config: {e}")
+    
+    def _load_existing_mask(self, mask_save_path):
+        """Load the existing mask from the main GUI mask input field"""
+        from tkinter import messagebox
+        import os
+        
+        try:
+            # Use the existing mask path passed from main GUI
+            if not hasattr(self, 'existing_mask_path') or not self.existing_mask_path:
+                messagebox.showerror("Error", "No mask path specified in main GUI.\nPlease enter a mask path in the main interface first.")
+                return
+                
+            mask_file = self.existing_mask_path.strip()
+            if not mask_file:
+                messagebox.showerror("Error", "No mask path specified in main GUI.\nPlease enter a mask path in the main interface first.")
+                return
+                
+            if not os.path.exists(mask_file):
+                messagebox.showerror("Error", f"Mask file does not exist:\n{mask_file}")
+                return
+            
+            # Read keyframe metadata to determine which frame this mask belongs to
+            from mask.mask_utils import get_keyframe_metadata_from_mask
+            keyframe = get_keyframe_metadata_from_mask(mask_file)
+            
+            if keyframe is not None:
+                # Navigate to the keyframe before loading the mask
+                print(f"Navigating to keyframe {keyframe}")
+                self.frame_manager.set_current_frame(keyframe)
+            
+            # Load the mask using the existing checkpoint system
+            self.editor.apply_loaded_mask(mask_file)
+            
+            # Mark the frame as having a mask after loading (this should happen in apply_loaded_mask but ensure it happens)
+            target_frame = keyframe if keyframe is not None else self.current_frame_index
+            self.mark_frame_with_mask(target_frame)
+            
+            # No popup needed - the frame jump and loaded mask are sufficient indication
+            if keyframe is not None:
+                print(f"Mask loaded successfully from: {mask_file}, navigated to keyframe {keyframe}")
+            else:
+                print(f"Mask loaded successfully from: {mask_file}")
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to load mask:\n{str(e)}")
+    
     def create_confirm_buttons(self, parent, video_path, mask_save_path):
         """Create confirm and cancel buttons"""
         # Second row of buttons for confirm/cancel
         confirm_frame = ttk.Frame(parent)
         confirm_frame.pack(pady=5)
+        
+        # Load existing mask button
+        ttk.Button(confirm_frame, text="Load Existing Mask", 
+                 command=lambda: self._load_existing_mask(mask_save_path)).pack(side=tk.LEFT, padx=10)
         
         # Confirm button (initially disabled)
         self.confirm_button = ttk.Button(confirm_frame, text="Confirm & Save", 
@@ -538,16 +703,23 @@ class MaskUIBase:
             print(f"Error loading settings: {str(e)}")
             
     def save_settings(self):
-        """Save user settings to file"""
+        """Save user settings to main app config"""
         try:
-            settings = {
-                'brush_size': self.paint_radius
-                # Add more settings as needed
-            }
-            
-            with open(self.settings_file, 'w') as f:
-                json.dump(settings, f)
+            # Save to main app config if available
+            if hasattr(self, 'main_app') and self.main_app:
+                self.main_app.mask_brush_size = self.paint_radius
+                self.main_app.config_manager.save_settings(self.main_app)
+                print(f"Brush size saved to main config: {self.paint_radius}")
+            else:
+                # Fallback to local file if main app not available
+                settings = {
+                    'brush_size': self.paint_radius
+                    # Add more settings as needed
+                }
                 
-            print("Settings saved successfully")
+                with open(self.settings_file, 'w') as f:
+                    json.dump(settings, f)
+                    
+                print("Settings saved to local file")
         except Exception as e:
             print(f"Error saving settings: {str(e)}")

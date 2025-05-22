@@ -278,19 +278,21 @@ class SAMMaskGenerator:
             'height': height
         }
 
-    def save_mask(self, mask, output_path):
+    def save_mask(self, mask, output_path, keyframe=None):
         """
         Save the generated mask to a file
         
         Args:
             mask: Generated mask (numpy array, boolean or uint8)
             output_path: Path to save the mask
+            keyframe: Frame number to store as keyframe metadata (optional)
         
         Returns:
             Path to the saved mask
         """
         import cv2
         import numpy as np
+        from PIL import Image
         
         # Convert boolean mask to uint8
         if mask.dtype == bool:
@@ -298,6 +300,26 @@ class SAMMaskGenerator:
         else:
             mask_uint8 = mask.astype(np.uint8)
         
-        # Save the mask
-        cv2.imwrite(output_path, mask_uint8)
-        return output_path
+        # If keyframe metadata should be added (non-zero frame)
+        if keyframe is not None and keyframe != 0:
+            # Use PIL to save with metadata
+            from mask.mask_utils import add_keyframe_metadata_to_mask
+            
+            # First save with cv2 to a temporary path
+            import tempfile
+            import os
+            temp_path = tempfile.mktemp(suffix='.png')
+            cv2.imwrite(temp_path, mask_uint8)
+            
+            # Then add metadata and save to final path
+            final_path = add_keyframe_metadata_to_mask(temp_path, keyframe, output_path)
+            
+            # Clean up temp file
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+                
+            return final_path
+        else:
+            # Standard save without metadata (frame 0 or no keyframe specified)
+            cv2.imwrite(output_path, mask_uint8)
+            return output_path

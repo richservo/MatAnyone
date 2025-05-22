@@ -520,28 +520,6 @@ class InferenceCore:
                 new_mask[mask == tmp_id] = obj.id
 
         return new_mask
-        
-    def _report_progress(self, percentage, stage, status, callback=None):
-        """
-        Report progress to the callback function if provided.
-        
-        Args:
-            percentage (float): Progress percentage (0-100)
-            stage (str): Current processing stage
-            status (str): Detailed status message
-            callback (callable, optional): Progress callback function
-        """
-        # Always print progress to console for monitoring
-        print(f"Progress: {percentage:.1f}% - {stage} - {status}")
-        
-        # Call the callback if provided
-        if callback is not None and callable(callback):
-            try:
-                callback(percentage, stage, status)
-            except Exception as e:
-                # Don't let callback errors interrupt processing
-                print(f"Error in progress callback: {str(e)}")
-                pass
 
     @torch.inference_mode()
     def process_video(
@@ -558,7 +536,6 @@ class InferenceCore:
         video_codec: str = 'Auto',
         video_quality: str = 'High',
         custom_bitrate: Optional[int] = None,
-        progress_callback=None,
     ) -> Tuple:
         """
         Process a video for object segmentation and matting with high-quality video encoding.
@@ -577,10 +554,6 @@ class InferenceCore:
             video_codec (str, optional): Video codec to use ('Auto', 'H.264', 'H.265', 'VP9'). Defaults to 'Auto'
             video_quality (str, optional): Quality preset ('Low', 'Medium', 'High', 'Very High', 'Lossless'). Defaults to 'High'
             custom_bitrate (int, optional): Custom bitrate in kbps (overrides quality preset). Defaults to None
-            progress_callback (callable, optional): A function to call with progress updates. The function should accept:
-                - percentage (float): A value from 0-100 representing overall progress 
-                - stage (str): Current processing stage
-                - status (str): Detailed status message
         Returns:
             Tuple[str, str]: A tuple containing:
                 - Path to the output foreground video file (str)
@@ -588,16 +561,12 @@ class InferenceCore:
         Output:
             - Saves processed video files with foreground (_fgr) and alpha matte (_pha) using high-quality encoding
             - If save_image=True, saves individual frames in separate directories
-            - Reports progress through the progress_callback function if provided
         """
         # Print video quality settings
         if custom_bitrate:
             print(f"Video encoding: {video_codec} codec, {video_quality} quality, {custom_bitrate} kbps bitrate")
         else:
             print(f"Video encoding: {video_codec} codec, {video_quality} quality")
-            
-        # Initialize progress tracking
-        self._report_progress(0, "Initializing", "Starting video processing", progress_callback)
         
         # Create output directory
         if output_path is None:
@@ -610,14 +579,7 @@ class InferenceCore:
         n_warmup = int(n_warmup)
         max_size = int(max_size)
 
-        # Report progress - loading video
-        self._report_progress(2, "Loading", "Reading video frames", progress_callback)
-        
         vframes, fps, length, video_name = read_frame_from_videos(input_path)
-        
-        # Report progress after video is loaded
-        self._report_progress(5, "Preparing", "Video loaded, preparing frames", progress_callback)
-        
         repeated_frames = vframes[0].unsqueeze(0).repeat(n_warmup, 1, 1, 1)
         vframes = torch.cat([repeated_frames, vframes], dim=0).float()
         length += n_warmup
@@ -639,9 +601,6 @@ class InferenceCore:
             os.makedirs(f"{output_path}/{video_name}/pha", exist_ok=True)
             os.makedirs(f"{output_path}/{video_name}/fgr", exist_ok=True)
 
-        # Report progress - loading and preparing mask
-        self._report_progress(8, "Mask", "Loading and preparing mask", progress_callback)
-        
         # Load mask and ensure it's on the correct device
         mask = np.array(Image.open(mask_path).convert("L"))
         if r_dilate > 0:
@@ -651,9 +610,6 @@ class InferenceCore:
         
         # Convert mask to tensor and move to correct device
         mask = torch.from_numpy(mask).to(self.device)
-        
-        # Report progress after mask is prepared
-        self._report_progress(10, "Mask", "Mask prepared", progress_callback)
         
         if max_size > 0:
             mask = F.interpolate(
@@ -678,9 +634,6 @@ class InferenceCore:
         fgr_filename = f"{output_path}/{video_name}_fgr.mp4"
         alpha_filename = f"{output_path}/{video_name}_pha.mp4"
         
-        # Report progress - setting up video writers
-        self._report_progress(12, "Setup", "Setting up video encoders", progress_callback)
-        
         # Create high-quality video writers if available, otherwise use imageio fallback
         if HAS_VIDEO_UTILS:
             print("Using high-quality video encoding...")
@@ -703,36 +656,11 @@ class InferenceCore:
                 alpha_writer.release()
         else:
             use_high_quality = False
-            
-        # Report progress - ready to process frames
-        self._report_progress(15, "Processing", "Ready to process frames", progress_callback)
 
         # Process frames
         phas = []
         fgrs = []
-        frame_processing_start = 15  # Progress percentage when frame processing starts
-        frame_processing_end = 85    # Progress percentage when frame processing ends
-        processing_range = frame_processing_end - frame_processing_start
-        
         for ti in tqdm(range(length)):
-            # Calculate progress for this frame
-            frame_progress = 0
-            if ti > 0:  # Avoid division by zero
-                frame_progress = (ti / (length - 1)) * processing_range
-            progress = frame_processing_start + frame_progress
-            
-            # Update progress every 5% or for significant frames
-            if ti == 0 or ti == n_warmup or ti % max(1, (length // 20)) == 0 or ti == length - 1:
-                if ti == 0:
-                    progress_msg = f"Processing first frame {ti+1}/{length}"
-                elif ti <= n_warmup:
-                    progress_msg = f"Processing warmup {ti+1}/{length}"
-                elif ti == length - 1:
-                    progress_msg = f"Processing final frame {ti+1}/{length}"
-                else:
-                    progress_msg = f"Processing frame {ti+1}/{length}"
-                self._report_progress(progress, "Processing", progress_msg, progress_callback)
-            
             image = vframes[ti]
             image_np = np.array(image.permute(1, 2, 0))
             # Move image to the same device as model
@@ -789,16 +717,12 @@ class InferenceCore:
                         com_np[..., [2, 1, 0]],
                     )
 
-        # Report progress - finalizing video output
-        self._report_progress(85, "Finalizing", "Finalizing video output", progress_callback)
-        
         # Finalize video output
         if use_high_quality:
             # Release high-quality video writers
             fgr_writer.release()
             alpha_writer.release()
             print(f"High-quality videos saved:\n  Foreground: {fgr_filename}\n  Alpha: {alpha_filename}")
-            self._report_progress(95, "Finishing", "Videos saved successfully with high-quality encoding", progress_callback)
         else:
             # Use imageio fallback with enhanced error handling
             fgrs = np.array(fgrs)
@@ -832,16 +756,13 @@ class InferenceCore:
                             print("Could not find ffmpeg. Please install it with 'brew install ffmpeg'")
                 
                 # Try to save the videos with imageio
-                self._report_progress(88, "Saving", "Saving foreground video", progress_callback)
                 print(f"Saving foreground video to {fgr_filename}")
                 imageio.mimwrite(fgr_filename, fgrs, fps=fps, quality=7)
                 
-                self._report_progress(92, "Saving", "Saving alpha video", progress_callback)
                 print(f"Saving alpha video to {alpha_filename}")
                 imageio.mimwrite(alpha_filename, phas, fps=fps, quality=7)
                 
                 print("Videos saved successfully with imageio")
-                self._report_progress(95, "Finishing", "Videos saved successfully with imageio", progress_callback)
                 
             except Exception as e:
                 print(f"Error saving video: {e}")
@@ -878,8 +799,5 @@ class InferenceCore:
                     alpha_filename = alpha_dir
                 except Exception as e2:
                     print(f"Failed to save individual frames: {e2}")
-        
-        # Report final 100% progress
-        self._report_progress(100, "Complete", "Video processing completed successfully", progress_callback)
         
         return (fgr_filename, alpha_filename)

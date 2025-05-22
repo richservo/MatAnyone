@@ -57,6 +57,9 @@ class MatAnyoneApp:
         # Variable for input type (video or image sequence)
         self.input_type = StringVar(value="video")
         
+        # Mask generator settings
+        self.mask_brush_size = 5  # Default brush size
+        
         # Create main frame
         self.main_frame = ttk.Frame(root, padding="10")
         self.main_frame.pack(fill=tk.BOTH, expand=True)
@@ -75,6 +78,9 @@ class MatAnyoneApp:
         
         # Load saved settings
         self.config_manager.load_settings(self)
+        
+        # Check existing mask for keyframe metadata
+        self.event_handler.check_existing_mask_keyframe()
         
         # Print welcome message
         print("Welcome to MatAnyone Video Processor GUI")

@@ -88,6 +88,10 @@ class MaskFrameManager:
         self.ui.current_frame_var.set(str(frame_index))
         self.ui.frame_slider.set(frame_index)
         
+        # Update hashmarks to highlight current frame
+        if hasattr(self.ui, 'create_hashmarks'):
+            self.ui.create_hashmarks(frame_index)
+        
         # Get current canvas dimensions
         canvas_width = self.ui.canvas.winfo_width()
         canvas_height = self.ui.canvas.winfo_height()
@@ -466,8 +470,8 @@ class MaskFrameManager:
                 
                 print(f"File already exists, using unique name: {os.path.basename(mask_save_path)}")
             
-            # Save the mask
-            mask_path = self.ui.mask_generator.save_mask(mask_to_save, mask_save_path)
+            # Save the mask with keyframe metadata
+            mask_path = self.ui.mask_generator.save_mask(mask_to_save, mask_save_path, keyframe=self.ui.current_frame_index)
             
             messagebox.showinfo("Success", 
                                f"Mask saved successfully!\n\n"

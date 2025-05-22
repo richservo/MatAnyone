@@ -133,6 +133,10 @@ class MaskEditor:
             # Update checkpoint markers
             self.ui.frame_manager.update_checkpoint_markers()
             
+            # Mark this frame as having a generated mask (for red highlighting)
+            if hasattr(self.ui, 'mark_frame_with_mask'):
+                self.ui.mark_frame_with_mask(self.ui.current_frame_index)
+            
             # Update generate button text
             self.ui.generate_button.config(text="Update Mask")
             
@@ -1103,3 +1107,72 @@ class MaskEditor:
             self.ui.overlay_visible = False
             
             self.ui.status_var.set("Redid clearing all selections")
+    
+    def apply_loaded_mask(self, mask_input):
+        """Apply a loaded mask to the current frame"""
+        try:
+            # Handle both file path and numpy array inputs
+            if isinstance(mask_input, str):
+                # Load from file path
+                from PIL import Image
+                mask_image = Image.open(mask_input).convert('L')
+                mask_array = np.array(mask_image)
+            else:
+                # Use provided numpy array
+                mask_array = mask_input
+            
+            # Resize mask to match current image dimensions if needed
+            from PIL import Image
+            current_height, current_width = self.ui.image.shape[:2]
+            mask_height, mask_width = mask_array.shape
+            
+            if mask_height != current_height or mask_width != current_width:
+                # Resize mask to match image dimensions
+                mask_pil = Image.fromarray(mask_array)
+                mask_pil = mask_pil.resize((current_width, current_height), Image.NEAREST)
+                mask_array = np.array(mask_pil)
+            
+            # Convert to boolean mask (assuming mask is grayscale where >0 means foreground)
+            mask_bool = mask_array > 127  # Threshold at middle gray
+            
+            # Store as both generated and edited mask
+            self.ui.generated_mask = mask_bool.copy()
+            self.ui.edited_mask = mask_bool.copy()
+            
+            # Clear any existing selections since we're loading a complete mask
+            self.ui.points = []
+            self.ui.box_coords = None
+            
+            # Create checkpoint for this frame (like after generating a mask)
+            self.ui.checkpoints[self.ui.current_frame_index] = {
+                'mask': mask_bool.copy(),
+                'points': [],
+                'box_coords': [],
+                'edited_mask': mask_bool.copy()
+            }
+            
+            # Update checkpoint markers
+            self.ui.frame_manager.update_checkpoint_markers()
+            
+            # Update the display
+            self.show_mask_overlay()
+            
+            # Enable overlay button and show overlay
+            if hasattr(self.ui, 'overlay_button'):
+                self.ui.overlay_button.config(state=tk.NORMAL, text="Hide Overlay")
+            self.ui.overlay_visible = True
+            
+            # Enable confirm button
+            if hasattr(self.ui, 'confirm_button'):
+                self.ui.confirm_button.config(state=tk.NORMAL)
+            
+            # Mark this frame as having a generated mask (for red highlighting)
+            if hasattr(self.ui, 'mark_frame_with_mask'):
+                self.ui.mark_frame_with_mask(self.ui.current_frame_index)
+            
+            self.ui.status_var.set("Mask loaded successfully")
+            
+        except Exception as e:
+            self.ui.status_var.set(f"Error loading mask: {str(e)}")
+            import traceback
+            traceback.print_exc()

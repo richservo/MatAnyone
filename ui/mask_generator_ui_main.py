@@ -22,31 +22,37 @@ from mask.sam_generator import SAMMaskGenerator
 class MaskGeneratorUI(MaskUIBase):
     """User interface for generating masks using SAM"""
     
-    def __init__(self, root, on_mask_generated=None):
+    def __init__(self, root, on_mask_generated=None, main_app=None):
         """
         Initialize the mask generator UI
         
         Args:
             root: Tkinter root or Toplevel window
             on_mask_generated: Callback function for when mask is generated
+            main_app: Reference to the main application for config access
         """
         # Initialize the base UI
         super().__init__(root, on_mask_generated)
         
+        # Store reference to main app for config access
+        self.main_app = main_app
+        
         # Create the SAM mask generator
         self.mask_generator = SAMMaskGenerator()
     
-    def open_mask_generator(self, video_path, mask_save_path=None):
+    def open_mask_generator(self, video_path, mask_save_path=None, existing_mask_path=None):
         """
         Open the mask generator UI
         
         Args:
             video_path: Path to the video file
             mask_save_path: Path to save the generated mask (optional)
+            existing_mask_path: Path to existing mask from main GUI (optional)
         """
         try:
-            # Store video path
+            # Store paths
             self.video_path = video_path
+            self.existing_mask_path = existing_mask_path
             
             # Get video information
             self.video_info = self.mask_generator.get_video_info(video_path)

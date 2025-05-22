@@ -142,12 +142,17 @@ class WidgetManager:
         # Mask button - browse only
         ttk.Button(input_section, text="Browse...", command=self.app.event_handler.browse_mask, width=8).grid(row=2, column=2, padx=5, pady=5, sticky="e")
         
-        # Output directory selection - Row 3
-        ttk.Label(input_section, text="Output Folder:").grid(row=3, column=0, sticky="w", pady=5)
-        ttk.Entry(input_section, textvariable=self.app.output_path).grid(row=3, column=1, sticky="ew", pady=5)
+        # Keyframe status label - Row 2.5 (spans columns)
+        self.app.keyframe_status = tk.StringVar()
+        self.app.keyframe_status_label = ttk.Label(input_section, textvariable=self.app.keyframe_status, foreground="yellow", font=("TkDefaultFont", 9, "italic"))
+        self.app.keyframe_status_label.grid(row=3, column=1, sticky="w", pady=(0, 5))
+        
+        # Output directory selection - Row 4
+        ttk.Label(input_section, text="Output Folder:").grid(row=4, column=0, sticky="w", pady=5)
+        ttk.Entry(input_section, textvariable=self.app.output_path).grid(row=4, column=1, sticky="ew", pady=5)
         
         # Output folder browse button
-        ttk.Button(input_section, text="Browse...", command=self.app.event_handler.browse_output, width=8).grid(row=3, column=2, padx=5, pady=5, sticky="e")
+        ttk.Button(input_section, text="Browse...", command=self.app.event_handler.browse_output, width=8).grid(row=4, column=2, padx=5, pady=5, sticky="e")
     
     def create_options_section(self):
         """Create the processing options section"""

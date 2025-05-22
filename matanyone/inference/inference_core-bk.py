@@ -1,12 +1,3 @@
-# inference_core-base_code.py - process_video - v1.1737784320
-# Updated: Friday, January 24, 2025 at 20:32:00 PST
-# Changes in this version:
-# - Fixed critical bug where alpha (PHA) videos were not being written correctly
-# - Alpha mask is now properly converted to 3-channel for video writer compatibility
-# - Ensured both foreground and alpha videos are written with correct channel formats
-# - Fixed issue causing bidirectional processing to fail due to missing PHA video
-# - Improved error handling for video encoding edge cases
-
 import logging
 from omegaconf import DictConfig
 from typing import List, Optional, Iterable, Union, Tuple
@@ -30,14 +21,6 @@ from matanyone.inference.image_feature_store import ImageFeatureStore
 from matanyone.model.matanyone import MatAnyone
 from matanyone.utils.tensor_utils import pad_divide_by, unpad, aggregate
 from matanyone.utils.inference_utils import gen_dilate, gen_erosion, read_frame_from_videos
-
-# Import our high-quality video writer
-try:
-    from utils.video_utils import create_high_quality_writer
-    HAS_VIDEO_UTILS = True
-except ImportError:
-    print("Warning: video_utils not found. Using basic video encoding.")
-    HAS_VIDEO_UTILS = False
 
 log = logging.getLogger()
 
@@ -520,28 +503,6 @@ class InferenceCore:
                 new_mask[mask == tmp_id] = obj.id
 
         return new_mask
-        
-    def _report_progress(self, percentage, stage, status, callback=None):
-        """
-        Report progress to the callback function if provided.
-        
-        Args:
-            percentage (float): Progress percentage (0-100)
-            stage (str): Current processing stage
-            status (str): Detailed status message
-            callback (callable, optional): Progress callback function
-        """
-        # Always print progress to console for monitoring
-        print(f"Progress: {percentage:.1f}% - {stage} - {status}")
-        
-        # Call the callback if provided
-        if callback is not None and callable(callback):
-            try:
-                callback(percentage, stage, status)
-            except Exception as e:
-                # Don't let callback errors interrupt processing
-                print(f"Error in progress callback: {str(e)}")
-                pass
 
     @torch.inference_mode()
     def process_video(
@@ -555,15 +516,11 @@ class InferenceCore:
         suffix: str = "",
         save_image: bool = False,
         max_size: int = -1,
-        video_codec: str = 'Auto',
-        video_quality: str = 'High',
-        custom_bitrate: Optional[int] = None,
-        progress_callback=None,
     ) -> Tuple:
         """
-        Process a video for object segmentation and matting with high-quality video encoding.
+        Process a video for object segmentation and matting.
         This method processes a video file by performing object segmentation and matting on each frame.
-        It supports warmup frames, mask erosion/dilation, and various output options with advanced video quality control.
+        It supports warmup frames, mask erosion/dilation, and various output options.
         Args:
             input_path (str): Path to the input video file
             mask_path (str): Path to the mask image file used for initial segmentation
@@ -574,31 +531,14 @@ class InferenceCore:
             suffix (str, optional): Suffix to append to output filename. Defaults to ""
             save_image (bool, optional): Whether to save individual frames. Defaults to False
             max_size (int, optional): Maximum size for frame dimension. Use -1 for no limit. Defaults to -1
-            video_codec (str, optional): Video codec to use ('Auto', 'H.264', 'H.265', 'VP9'). Defaults to 'Auto'
-            video_quality (str, optional): Quality preset ('Low', 'Medium', 'High', 'Very High', 'Lossless'). Defaults to 'High'
-            custom_bitrate (int, optional): Custom bitrate in kbps (overrides quality preset). Defaults to None
-            progress_callback (callable, optional): A function to call with progress updates. The function should accept:
-                - percentage (float): A value from 0-100 representing overall progress 
-                - stage (str): Current processing stage
-                - status (str): Detailed status message
         Returns:
             Tuple[str, str]: A tuple containing:
                 - Path to the output foreground video file (str)
                 - Path to the output alpha matte video file (str)
         Output:
-            - Saves processed video files with foreground (_fgr) and alpha matte (_pha) using high-quality encoding
+            - Saves processed video files with foreground (_fgr) and alpha matte (_pha)
             - If save_image=True, saves individual frames in separate directories
-            - Reports progress through the progress_callback function if provided
         """
-        # Print video quality settings
-        if custom_bitrate:
-            print(f"Video encoding: {video_codec} codec, {video_quality} quality, {custom_bitrate} kbps bitrate")
-        else:
-            print(f"Video encoding: {video_codec} codec, {video_quality} quality")
-            
-        # Initialize progress tracking
-        self._report_progress(0, "Initializing", "Starting video processing", progress_callback)
-        
         # Create output directory
         if output_path is None:
             output_path = tempfile.TemporaryDirectory().name
@@ -610,14 +550,7 @@ class InferenceCore:
         n_warmup = int(n_warmup)
         max_size = int(max_size)
 
-        # Report progress - loading video
-        self._report_progress(2, "Loading", "Reading video frames", progress_callback)
-        
         vframes, fps, length, video_name = read_frame_from_videos(input_path)
-        
-        # Report progress after video is loaded
-        self._report_progress(5, "Preparing", "Video loaded, preparing frames", progress_callback)
-        
         repeated_frames = vframes[0].unsqueeze(0).repeat(n_warmup, 1, 1, 1)
         vframes = torch.cat([repeated_frames, vframes], dim=0).float()
         length += n_warmup
@@ -639,9 +572,6 @@ class InferenceCore:
             os.makedirs(f"{output_path}/{video_name}/pha", exist_ok=True)
             os.makedirs(f"{output_path}/{video_name}/fgr", exist_ok=True)
 
-        # Report progress - loading and preparing mask
-        self._report_progress(8, "Mask", "Loading and preparing mask", progress_callback)
-        
         # Load mask and ensure it's on the correct device
         mask = np.array(Image.open(mask_path).convert("L"))
         if r_dilate > 0:
@@ -651,9 +581,6 @@ class InferenceCore:
         
         # Convert mask to tensor and move to correct device
         mask = torch.from_numpy(mask).to(self.device)
-        
-        # Report progress after mask is prepared
-        self._report_progress(10, "Mask", "Mask prepared", progress_callback)
         
         if max_size > 0:
             mask = F.interpolate(
@@ -674,65 +601,9 @@ class InferenceCore:
         bgr = np.zeros((1, 1, 3), dtype=np.float32)
         objects = [1]
 
-        # Set up output filenames
-        fgr_filename = f"{output_path}/{video_name}_fgr.mp4"
-        alpha_filename = f"{output_path}/{video_name}_pha.mp4"
-        
-        # Report progress - setting up video writers
-        self._report_progress(12, "Setup", "Setting up video encoders", progress_callback)
-        
-        # Create high-quality video writers if available, otherwise use imageio fallback
-        if HAS_VIDEO_UTILS:
-            print("Using high-quality video encoding...")
-            
-            # Create video writers
-            fgr_writer = create_high_quality_writer(
-                fgr_filename, fps, new_w, new_h, 
-                video_codec, video_quality, custom_bitrate
-            )
-            alpha_writer = create_high_quality_writer(
-                alpha_filename, fps, new_w, new_h,
-                video_codec, video_quality, custom_bitrate
-            )
-            
-            use_high_quality = fgr_writer.isOpened() and alpha_writer.isOpened()
-            
-            if not use_high_quality:
-                print("Warning: Could not initialize high-quality video writers. Falling back to imageio.")
-                fgr_writer.release()
-                alpha_writer.release()
-        else:
-            use_high_quality = False
-            
-        # Report progress - ready to process frames
-        self._report_progress(15, "Processing", "Ready to process frames", progress_callback)
-
-        # Process frames
         phas = []
         fgrs = []
-        frame_processing_start = 15  # Progress percentage when frame processing starts
-        frame_processing_end = 85    # Progress percentage when frame processing ends
-        processing_range = frame_processing_end - frame_processing_start
-        
         for ti in tqdm(range(length)):
-            # Calculate progress for this frame
-            frame_progress = 0
-            if ti > 0:  # Avoid division by zero
-                frame_progress = (ti / (length - 1)) * processing_range
-            progress = frame_processing_start + frame_progress
-            
-            # Update progress every 5% or for significant frames
-            if ti == 0 or ti == n_warmup or ti % max(1, (length // 20)) == 0 or ti == length - 1:
-                if ti == 0:
-                    progress_msg = f"Processing first frame {ti+1}/{length}"
-                elif ti <= n_warmup:
-                    progress_msg = f"Processing warmup {ti+1}/{length}"
-                elif ti == length - 1:
-                    progress_msg = f"Processing final frame {ti+1}/{length}"
-                else:
-                    progress_msg = f"Processing frame {ti+1}/{length}"
-                self._report_progress(progress, "Processing", progress_msg, progress_callback)
-            
             image = vframes[ti]
             image_np = np.array(image.permute(1, 2, 0))
             # Move image to the same device as model
@@ -756,130 +627,89 @@ class InferenceCore:
             if ti > (n_warmup - 1):
                 com_np = (com_np * 255).astype(np.uint8)
                 pha = (pha * 255).astype(np.uint8)
-                
-                # CRITICAL FIX: Convert single-channel alpha to 3-channel for video writer
-                if len(pha.shape) == 3 and pha.shape[2] == 1:
-                    # Convert single channel to 3-channel by duplicating
-                    pha_3ch = np.repeat(pha, 3, axis=2)
-                else:
-                    # Ensure it's 3-channel
-                    pha_3ch = pha
-                
-                # Write frames to high-quality video writers or collect for imageio
-                if use_high_quality:
-                    # Write directly to high-quality video files
-                    # Convert RGB to BGR for OpenCV (foreground)
-                    fgr_writer.write(com_np[..., [2, 1, 0]])
-                    # Write alpha as 3-channel grayscale (BGR format for OpenCV)
-                    alpha_writer.write(pha_3ch[..., [2, 1, 0]] if pha_3ch.shape[2] == 3 else pha_3ch)
-                else:
-                    # Collect frames for imageio fallback
-                    fgrs.append(com_np)
-                    phas.append(pha_3ch)  # Use 3-channel version for consistency
-                
-                # Save individual frames if requested
+                fgrs.append(com_np)
+                phas.append(pha)
                 if save_image:
-                    # Save original single-channel alpha for compatibility
                     cv2.imwrite(
                         f"{output_path}/{video_name}/pha/{str(ti - n_warmup).zfill(5)}.png",
-                        pha,  # Original single-channel version
+                        pha,
                     )
                     cv2.imwrite(
                         f"{output_path}/{video_name}/fgr/{str(ti - n_warmup).zfill(5)}.png",
                         com_np[..., [2, 1, 0]],
                     )
 
-        # Report progress - finalizing video output
-        self._report_progress(85, "Finalizing", "Finalizing video output", progress_callback)
+        fgrs = np.array(fgrs)
+        phas = np.array(phas)
         
-        # Finalize video output
-        if use_high_quality:
-            # Release high-quality video writers
-            fgr_writer.release()
-            alpha_writer.release()
-            print(f"High-quality videos saved:\n  Foreground: {fgr_filename}\n  Alpha: {alpha_filename}")
-            self._report_progress(95, "Finishing", "Videos saved successfully with high-quality encoding", progress_callback)
-        else:
-            # Use imageio fallback with enhanced error handling
-            fgrs = np.array(fgrs)
-            phas = np.array(phas)
+        fgr_filename = f"{output_path}/{video_name}_fgr.mp4"
+        alpha_filename = f"{output_path}/{video_name}_pha.mp4"
+        
+        # Check if ffmpeg is properly installed and set environment variable if needed
+        try:
+            # For Mac, try to find ffmpeg in common Homebrew locations
+            if platform.system() == 'Darwin':  # macOS
+                possible_ffmpeg_paths = [
+                    '/opt/homebrew/bin/ffmpeg',
+                    '/usr/local/bin/ffmpeg',
+                    '/opt/local/bin/ffmpeg',
+                    '/usr/bin/ffmpeg'
+                ]
+                
+                for path in possible_ffmpeg_paths:
+                    if os.path.exists(path):
+                        os.environ['IMAGEIO_FFMPEG_EXE'] = path
+                        print(f"Set IMAGEIO_FFMPEG_EXE to {path}")
+                        break
+                        
+                # If not found, try to determine it using 'which'
+                if 'IMAGEIO_FFMPEG_EXE' not in os.environ:
+                    try:
+                        ffmpeg_path = subprocess.check_output(['which', 'ffmpeg'], text=True).strip()
+                        if ffmpeg_path:
+                            os.environ['IMAGEIO_FFMPEG_EXE'] = ffmpeg_path
+                            print(f"Set IMAGEIO_FFMPEG_EXE to {ffmpeg_path}")
+                    except (subprocess.SubprocessError, FileNotFoundError):
+                        print("Could not find ffmpeg. Please install it with 'brew install ffmpeg'")
             
-            # Check if ffmpeg is properly installed and set environment variable if needed
+            # Now try to save the videos
+            print(f"Saving foreground video to {fgr_filename}")
+            imageio.mimwrite(fgr_filename, fgrs, fps=fps, quality=7)
+            
+            print(f"Saving alpha video to {alpha_filename}")
+            imageio.mimwrite(alpha_filename, phas, fps=fps, quality=7)
+            
+            print("Videos saved successfully")
+            
+        except Exception as e:
+            print(f"Error saving video: {e}")
+            print("\nFIX FOR MAC: Please install ffmpeg with Homebrew:")
+            print("  brew install ffmpeg")
+            print("\nIf you don't have Homebrew, install it with:")
+            print("  /bin/bash -c \"$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\"")
+            print("\nAlternatively, manually set the IMAGEIO_FFMPEG_EXE environment variable:")
+            print("  export IMAGEIO_FFMPEG_EXE=/path/to/your/ffmpeg")
+            
+            # Try alternative method for saving 
             try:
-                # For Mac, try to find ffmpeg in common Homebrew locations
-                if platform.system() == 'Darwin':  # macOS
-                    possible_ffmpeg_paths = [
-                        '/opt/homebrew/bin/ffmpeg',
-                        '/usr/local/bin/ffmpeg',
-                        '/opt/local/bin/ffmpeg',
-                        '/usr/bin/ffmpeg'
-                    ]
-                    
-                    for path in possible_ffmpeg_paths:
-                        if os.path.exists(path):
-                            os.environ['IMAGEIO_FFMPEG_EXE'] = path
-                            print(f"Set IMAGEIO_FFMPEG_EXE to {path}")
-                            break
-                            
-                    # If not found, try to determine it using 'which'
-                    if 'IMAGEIO_FFMPEG_EXE' not in os.environ:
-                        try:
-                            ffmpeg_path = subprocess.check_output(['which', 'ffmpeg'], text=True).strip()
-                            if ffmpeg_path:
-                                os.environ['IMAGEIO_FFMPEG_EXE'] = ffmpeg_path
-                                print(f"Set IMAGEIO_FFMPEG_EXE to {ffmpeg_path}")
-                        except (subprocess.SubprocessError, FileNotFoundError):
-                            print("Could not find ffmpeg. Please install it with 'brew install ffmpeg'")
+                print("Attempting to save images as individual PNG files instead...")
+                # Create output directories if they don't exist
+                frame_dir = f"{output_path}/{video_name}_frames"
+                alpha_dir = f"{output_path}/{video_name}_alpha"
                 
-                # Try to save the videos with imageio
-                self._report_progress(88, "Saving", "Saving foreground video", progress_callback)
-                print(f"Saving foreground video to {fgr_filename}")
-                imageio.mimwrite(fgr_filename, fgrs, fps=fps, quality=7)
+                os.makedirs(frame_dir, exist_ok=True)
+                os.makedirs(alpha_dir, exist_ok=True)
                 
-                self._report_progress(92, "Saving", "Saving alpha video", progress_callback)
-                print(f"Saving alpha video to {alpha_filename}")
-                imageio.mimwrite(alpha_filename, phas, fps=fps, quality=7)
+                # Save individual frames
+                for i, (fgr, pha) in enumerate(zip(fgrs, phas)):
+                    cv2.imwrite(f"{frame_dir}/{i:05d}.png", fgr[..., [2, 1, 0]])
+                    cv2.imwrite(f"{alpha_dir}/{i:05d}.png", pha)
                 
-                print("Videos saved successfully with imageio")
-                self._report_progress(95, "Finishing", "Videos saved successfully with imageio", progress_callback)
-                
-            except Exception as e:
-                print(f"Error saving video: {e}")
-                print("\nFIX FOR MAC: Please install ffmpeg with Homebrew:")
-                print("  brew install ffmpeg")
-                print("\nIf you don't have Homebrew, install it with:")
-                print("  /bin/bash -c \"$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\"")
-                print("\nAlternatively, manually set the IMAGEIO_FFMPEG_EXE environment variable:")
-                print("  export IMAGEIO_FFMPEG_EXE=/path/to/your/ffmpeg")
-                
-                # Try alternative method for saving 
-                try:
-                    print("Attempting to save images as individual PNG files instead...")
-                    # Create output directories if they don't exist
-                    frame_dir = f"{output_path}/{video_name}_frames"
-                    alpha_dir = f"{output_path}/{video_name}_alpha"
-                    
-                    os.makedirs(frame_dir, exist_ok=True)
-                    os.makedirs(alpha_dir, exist_ok=True)
-                    
-                    # Save individual frames
-                    for i, (fgr, pha) in enumerate(zip(fgrs, phas)):
-                        cv2.imwrite(f"{frame_dir}/{i:05d}.png", fgr[..., [2, 1, 0]])
-                        # Save alpha as single channel (grayscale)
-                        if len(pha.shape) == 3:
-                            pha_gray = pha[:, :, 0]  # Take first channel
-                        else:
-                            pha_gray = pha
-                        cv2.imwrite(f"{alpha_dir}/{i:05d}.png", pha_gray)
-                    
-                    print(f"Successfully saved frames to {frame_dir}/ and {alpha_dir}/")
-                    # Update the return paths to point to the directories instead
-                    fgr_filename = frame_dir
-                    alpha_filename = alpha_dir
-                except Exception as e2:
-                    print(f"Failed to save individual frames: {e2}")
-        
-        # Report final 100% progress
-        self._report_progress(100, "Complete", "Video processing completed successfully", progress_callback)
+                print(f"Successfully saved frames to {frame_dir}/ and {alpha_dir}/")
+                # Update the return paths to point to the directories instead
+                fgr_filename = frame_dir
+                alpha_filename = alpha_dir
+            except Exception as e2:
+                print(f"Failed to save individual frames: {e2}")
         
         return (fgr_filename, alpha_filename)
