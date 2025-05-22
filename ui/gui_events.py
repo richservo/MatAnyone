@@ -47,6 +47,16 @@ class EventHandler:
         """
         self.app = app
     
+    def on_chunking_mode_changed(self, event=None):
+        """Handle chunking mode dropdown change"""
+        mode = self.app.chunking_mode.get()
+        if mode == "Smart Chunking":
+            self.app.use_heat_map_chunking.set(True)
+            self.app.use_autochunk.set(False)
+        else:  # Uniform Chunking
+            self.app.use_heat_map_chunking.set(False)
+            self.app.use_autochunk.set(True)
+    
     def toggle_enhanced_options(self):
         """Show or hide enhanced chunk processing options based on checkbox"""
         if self.app.use_enhanced_chunks.get():
@@ -65,6 +75,10 @@ class EventHandler:
     def toggle_autochunk(self):
         """Toggle the state of the Number of Chunks input based on Auto-chunk checkbox"""
         if self.app.use_enhanced_chunks.get() and self.app.use_autochunk.get():
+            # Disable heat map chunking if autochunk is enabled
+            self.app.use_heat_map_chunking.set(False)
+            self.app.face_priority_frame.grid_remove()
+            
             # Disable the chunks spinbox when autochunk is enabled
             self.app.chunks_spinbox.config(state=tk.DISABLED)
             self.app.chunks_label.config(state=tk.DISABLED)
@@ -78,6 +92,51 @@ class EventHandler:
             self.app.chunks_info_label.config(state=tk.NORMAL)
             # Reset info text
             self.app.chunks_info_label.config(text="(2+ for chunking)")
+    
+    def toggle_heat_map_chunking(self):
+        """Toggle the state of controls based on Heat Map Chunking checkbox"""
+        if self.app.use_enhanced_chunks.get() and self.app.use_heat_map_chunking.get():
+            # Disable autochunk if heat map chunking is enabled
+            self.app.use_autochunk.set(False)
+            
+            # Show face priority weight control
+            self.app.face_priority_frame.grid()
+            
+            # Disable the chunks spinbox when heat map chunking is enabled
+            self.app.chunks_spinbox.config(state=tk.DISABLED)
+            self.app.chunks_label.config(state=tk.DISABLED)
+            self.app.chunks_info_label.config(state=tk.DISABLED)
+            # Change info text to indicate chunks will be placed by heat map
+            self.app.chunks_info_label.config(text="(Heat map-based)")
+            
+            # Disable chunk type selection
+            for child in self.app.winfo_children():
+                if isinstance(child, ttk.Radiobutton) and hasattr(child, 'cget'):
+                    try:
+                        if child.cget('variable') == str(self.app.chunk_type):
+                            child.config(state=tk.DISABLED)
+                    except:
+                        pass
+        else:
+            # Hide face priority weight control
+            self.app.face_priority_frame.grid_remove()
+            
+            # Enable the chunks spinbox when heat map chunking is disabled
+            if not self.app.use_autochunk.get():
+                self.app.chunks_spinbox.config(state=tk.NORMAL)
+                self.app.chunks_label.config(state=tk.NORMAL)
+                self.app.chunks_info_label.config(state=tk.NORMAL)
+                # Reset info text
+                self.app.chunks_info_label.config(text="(2+ for chunking)")
+            
+            # Enable chunk type selection
+            for child in self.app.winfo_children():
+                if isinstance(child, ttk.Radiobutton) and hasattr(child, 'cget'):
+                    try:
+                        if child.cget('variable') == str(self.app.chunk_type):
+                            child.config(state=tk.NORMAL)
+                    except:
+                        pass
 
     def update_input_label(self):
         """Update the input label based on selected input type"""

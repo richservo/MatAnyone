@@ -163,17 +163,17 @@ class ProcessingManager:
             return False
         
         # Enhanced chunking is also only for videos
-        if self.app.use_enhanced_chunks.get() and self.app.input_type.get() == "sequence":
+        if self.app.input_type.get() == "sequence":
             messagebox.showerror("Error", "Enhanced chunk processing is only supported for video files")
             return False
         
         # Autochunk mode requires enhanced chunking
-        if self.app.use_autochunk.get() and not self.app.use_enhanced_chunks.get():
+        if False:  # Autochunk without enhanced is no longer supported
             messagebox.showerror("Error", "Auto-chunk mode requires Enhanced Chunk Processing to be enabled")
             return False
         
         # Enhanced chunking requires num_chunks > 1 (unless using autochunk)
-        if self.app.use_enhanced_chunks.get() and num_chunks <= 1 and not self.app.use_autochunk.get():
+        if num_chunks <= 1 and not self.app.use_autochunk.get():
             messagebox.showerror("Error", "Enhanced chunk processing requires Number of Chunks to be 2 or more")
             return False
         
@@ -215,17 +215,12 @@ class ProcessingManager:
             num_chunks = self.app.num_chunks.get()
             chunk_type = self.app.chunk_type.get()
             
-            if self.app.use_autochunk.get():
-                self.update_progress(10, f"Processing {input_type_str} with automatic chunk sizing...")
-            elif num_chunks > 1 and self.app.use_enhanced_chunks.get():
-                if chunk_type == "grid":
-                    self.update_progress(10, f"Processing {input_type_str} with enhanced grid processing...")
-                else:
-                    self.update_progress(10, f"Processing {input_type_str} with enhanced strip processing...")
-            elif num_chunks > 1:
-                self.update_progress(10, f"Processing {input_type_str} in {num_chunks} chunks...")
+            # Display appropriate progress message based on chunking mode
+            chunking_mode = getattr(self.app, 'chunking_mode', None)
+            if chunking_mode and chunking_mode.get() == "Smart Chunking":
+                self.update_progress(10, f"Processing {input_type_str} with smart heat map chunking...")
             else:
-                self.update_progress(10, f"Processing {input_type_str}...")
+                self.update_progress(10, f"Processing {input_type_str} with uniform chunking...")
             
             # Set up output paths
             output_dir = self.app.output_path.get()
@@ -312,8 +307,8 @@ class ProcessingManager:
                 process_params['reverse_dilate'] = self.app.reverse_dilate.get()
                 process_params['cleanup_temp'] = bool(self.app.cleanup_temp.get())
                 
-                # Determine the processing method
-                if num_chunks > 1 and self.app.use_enhanced_chunks.get():
+                # Always use enhanced processing
+                if num_chunks > 1 or self.app.use_autochunk.get() or self.app.use_heat_map_chunking.get():
                     if self.app.use_autochunk.get():
                         print("Using automatic chunk sizing based on low-res dimensions")
                     elif chunk_type == "grid":
@@ -328,9 +323,13 @@ class ProcessingManager:
                     process_params['prioritize_faces'] = bool(self.app.prioritize_faces.get())
                     process_params['use_autochunk'] = bool(self.app.use_autochunk.get())
                     process_params['parallel_processing'] = bool(self.app.use_parallel_processing.get())
+                    process_params['use_heat_map_chunking'] = bool(self.app.use_heat_map_chunking.get())
+                    process_params['face_priority_weight'] = self.app.face_priority_weight.get()
                     
                     # Print mask threshold
                     print(f"Using mask coverage threshold of {self.app.mask_threshold.get()}%")
+                    if self.app.use_heat_map_chunking.get():
+                        print(f"Heat map chunking is enabled with face priority weight: {self.app.face_priority_weight.get()}")
                     if self.app.prioritize_faces.get():
                         print("Face detection is enabled for optimal keyframe selection")
                     if self.app.use_parallel_processing.get():

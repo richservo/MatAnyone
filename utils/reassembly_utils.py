@@ -1204,3 +1204,53 @@ def reassemble_grid_chunks(chunk_outputs, width, height, fps, frame_count, fgr_o
         temp_dir, apply_expanded_mask, full_res_mask_dir, maximize_mask,
         video_codec, video_quality, custom_bitrate
     )
+
+
+def reassemble_arbitrary_chunks(chunk_outputs, width, height, fps, frame_count, fgr_output_path, pha_output_path, 
+                                blend_method='weighted', temp_dir=None, apply_expanded_mask=False, full_res_mask_dir=None,
+                                maximize_mask=True, video_codec='Auto', video_quality='High', custom_bitrate=None):
+    """
+    Reassemble arbitrary positioned chunks into a complete video using black canvas approach.
+    
+    This function is specifically designed for heat map-based chunk placement where chunks
+    may be placed at arbitrary positions and orientations, and empty areas should remain black.
+    
+    Args:
+        chunk_outputs: List of dictionaries with chunk outputs (including orientation info)
+        width: Output video width
+        height: Output video height
+        fps: Frames per second
+        frame_count: Total frame count
+        fgr_output_path: Path to save foreground output
+        pha_output_path: Path to save alpha output
+        blend_method: Method for blending overlapping regions
+        temp_dir: Directory to save temporary files (debug images)
+        apply_expanded_mask: Whether to multiply output with expanded mask to prevent spill
+        full_res_mask_dir: Directory containing full resolution mask frames
+        maximize_mask: Whether to use mask optimization to maximize mask content
+        video_codec: Video codec to use
+        video_quality: Quality preset
+        custom_bitrate: Custom bitrate in kbps
+        
+    Returns:
+        Tuple of (fgr_output_path, pha_output_path)
+    """
+    print(f"Reassembling {len(chunk_outputs)} arbitrary positioned chunks using black canvas approach...")
+    
+    # Print chunk information
+    for i, chunk in enumerate(chunk_outputs):
+        orientation = chunk.get('orientation', 'unknown')
+        x_start, x_end = chunk['x_range']
+        y_start, y_end = chunk['y_range']
+        print(f"  Chunk {i}: {orientation} at ({x_start},{y_start}) - ({x_end},{y_end}), "
+              f"size: {chunk['width']}x{chunk['height']}")
+    
+    # Use the existing strip reassembly function which already handles arbitrary positions
+    # The key difference is that we expect sparse chunks that don't cover the entire frame
+    # Empty areas will naturally remain black/transparent
+    return reassemble_strip_chunks(
+        chunk_outputs, width, height, fps, frame_count, 
+        fgr_output_path, pha_output_path, blend_method, 
+        temp_dir, apply_expanded_mask, full_res_mask_dir, maximize_mask,
+        video_codec, video_quality, custom_bitrate
+    )

@@ -74,6 +74,8 @@ class ConfigManager:
                 'cleanup_temp': app.cleanup_temp.get(),
                 'use_enhanced_chunks': app.use_enhanced_chunks.get(),
                 'use_autochunk': app.use_autochunk.get(),
+                'use_heat_map_chunking': app.use_heat_map_chunking.get(),
+                'face_priority_weight': app.face_priority_weight.get(),
                 'low_res_scale': app.low_res_scale.get(),
                 'mask_threshold': app.mask_threshold.get(),
                 'prioritize_faces': app.prioritize_faces.get(),
@@ -168,6 +170,12 @@ class ConfigManager:
                 
             if 'use_autochunk' in settings:
                 app.use_autochunk.set(settings['use_autochunk'])
+                
+            if 'use_heat_map_chunking' in settings:
+                app.use_heat_map_chunking.set(settings['use_heat_map_chunking'])
+                
+            if 'face_priority_weight' in settings:
+                app.face_priority_weight.set(settings['face_priority_weight'])
                 
             if 'low_res_scale' in settings:
                 app.low_res_scale.set(settings['low_res_scale'])

@@ -43,7 +43,8 @@ from utils.extraction_utils import (
 )
 from utils.reassembly_utils import (
     reassemble_strip_chunks,
-    reassemble_grid_chunks
+    reassemble_grid_chunks,
+    reassemble_arbitrary_chunks
 )
 
 # Import enhanced memory management
@@ -74,13 +75,18 @@ from chunking.parallel_processor import (
 
 from chunking.chunk_optimizer import propagate_mask_data  # Import for mask propagation
 
+# Import heat map based chunk placement
+from chunking.heat_map_analyzer import HeatMapAnalyzer
+from chunking.smart_chunk_placer import SmartChunkPlacer
+
 
 def process_video_with_enhanced_chunking(processor, input_path, mask_path, output_path, num_chunks=2, 
                                          bidirectional=True, blend_method='weighted', lowres_blend_method=None, 
                                          reverse_dilate=15, cleanup_temp=True, mask_skip_threshold=5, 
                                          allow_native_resolution=True, low_res_scale=0.25, chunk_type='strips',
                                          prioritize_faces=True, use_autochunk=False, apply_expanded_mask=True,
-                                         optimize_masks=True, parallel_processing=True, max_workers=None, **kwargs):
+                                         optimize_masks=True, parallel_processing=True, max_workers=None, 
+                                         use_heat_map_chunking=False, face_priority_weight=3.0, **kwargs):
     """
     Helper function to check for interrupts throughout the enhanced chunk processing
     """
@@ -516,8 +522,61 @@ def process_video_with_enhanced_chunking(processor, input_path, mask_path, outpu
         # Step 3: Divide the video into chunks based on chunk_type
         print(f"STEP 3: Dividing video into chunks")
         
+        # Use heat map based chunking if requested
+        if use_heat_map_chunking:
+            print("Using heat map based intelligent chunk placement")
+            
+            # Create heat map analyzer
+            heat_map_analyzer = HeatMapAnalyzer(face_priority_weight=face_priority_weight)
+            
+            # Analyze the full-resolution mask frames to create heat map
+            # Also try to get original frames for face detection
+            original_frames_dir = None
+            if prioritize_faces:
+                # Check if we have access to original frames
+                potential_frames_dir = os.path.join(temp_dir, f"{video_name}_frames")
+                if os.path.exists(potential_frames_dir):
+                    original_frames_dir = potential_frames_dir
+                else:
+                    print("Note: Original frames not available for face detection, using mask-only heat map")
+            
+            # Generate heat map
+            heat_map = heat_map_analyzer.analyze_mask_sequence(full_res_mask_dir, original_frames_dir)
+            
+            # Save heat map visualization for debugging
+            heat_map_vis_path = os.path.join(temp_dir, f"{video_name}_heat_map.png")
+            heat_map_analyzer.save_heat_map_visualization(heat_map_vis_path)
+            temp_files.append(heat_map_vis_path)
+            
+            # Get activity statistics
+            activity_stats = heat_map_analyzer.get_activity_stats()
+            print(f"Heat map stats: mean activity={activity_stats['mean_activity']:.3f}, "
+                  f"active pixels={activity_stats['activity_ratio']*100:.1f}%")
+            
+            # Use smart chunk placer to find optimal positions
+            chunk_placer = SmartChunkPlacer(overlap_ratio=0.2)  # 20% overlap as before
+            chunk_segments = chunk_placer.find_optimal_chunk_placement(
+                heat_map, low_res_width, low_res_height, MODEL_FACTOR
+            )
+            
+            # Save chunk placement visualization
+            chunk_vis_path = os.path.join(temp_dir, f"{video_name}_chunk_placement.png")
+            chunk_placer.visualize_chunk_placement(heat_map, chunk_vis_path)
+            temp_files.append(chunk_vis_path)
+            
+            # Get coverage statistics
+            coverage_stats = chunk_placer.get_chunk_coverage_stats(heat_map)
+            print(f"Chunk placement achieved {coverage_stats['coverage']*100:.1f}% coverage "
+                  f"with {coverage_stats['num_chunks']} chunks")
+            
+            # Debug: Print all chunk dimensions
+            print("\nChunk dimensions summary:")
+            for i, chunk in enumerate(chunk_segments):
+                orientation = chunk.get('orientation', 'unknown')
+                print(f"  Chunk {i}: {chunk['width']}x{chunk['height']} ({orientation})")
+            
         # Use auto-chunking mode if requested
-        if use_autochunk:
+        elif use_autochunk:
             print("Using auto-chunking mode based on low-res resolution")
             chunk_segments = get_autochunk_segments(
                 adjusted_width, 
@@ -590,12 +649,11 @@ def process_video_with_enhanced_chunking(processor, input_path, mask_path, outpu
         print(f"Final chunk count: {actual_num_chunks}")
         
         if actual_num_chunks == 0:
-            print("No valid chunks could be created. Falling back to processing without chunking.")
+            print("ERROR: No valid chunks could be created. Cannot continue.")
             cleanup_temporary_files(temp_files, cleanup_temp)
             video_processor.cleanup()
             clear_mask_cache()
-            return processor.process_video(input_path=input_path, mask_path=mask_path, 
-                                         output_path=output_path, **kwargs)
+            raise ValueError("No valid chunks could be created with current settings")
         
         # Check for interrupt before step 4
         check_for_interrupt()
@@ -1190,7 +1248,20 @@ def process_video_with_enhanced_chunking(processor, input_path, mask_path, outpu
             print(f"Processing {actual_num_chunks} chunks sequentially")
             # Process chunks sequentially
             chunk_outputs = []
+            last_orientation = None
+            
             for chunk_idx, chunk_info in enumerate(chunk_segments):
+                # Check if orientation changed
+                current_orientation = chunk_info.get('orientation', 'horizontal')
+                if use_heat_map_chunking and last_orientation and last_orientation != current_orientation:
+                    print(f"Orientation change detected: {last_orientation} -> {current_orientation}")
+                    print("Clearing processor cache to handle new dimensions...")
+                    # Clear the processor pool to force model reload
+                    clear_processor_pool()
+                    clear_gpu_memory(processor, force_full_cleanup=True)
+                
+                last_orientation = current_orientation
+                
                 print(f"Processing chunk {chunk_idx+1}/{actual_num_chunks}")
                 result = process_chunk_function(chunk_info, chunk_idx, shared_args)
                 if result:
@@ -1269,7 +1340,23 @@ def process_video_with_enhanced_chunking(processor, input_path, mask_path, outpu
         check_for_interrupt()
         
         # Reassemble with appropriate method and apply expanded mask if requested
-        if chunk_type == 'strips' or use_autochunk:
+        if use_heat_map_chunking:
+            # Use arbitrary chunk reassembly for heat map based placement
+            final_fgr_path, final_pha_path = reassemble_arbitrary_chunks(
+                chunk_outputs, 
+                adjusted_width, 
+                adjusted_height, 
+                fps, 
+                frame_count, 
+                final_fgr_path, 
+                final_pha_path,
+                blend_method,
+                temp_dir,  # Pass temp_dir for weight mask debug images
+                apply_expanded_mask=apply_expanded_mask,  # Apply expanded mask to final output
+                full_res_mask_dir=full_res_mask_dir if apply_expanded_mask else None,  # Use full_res_mask_dir for expanded mask
+                maximize_mask=optimize_masks  # Pass the optimize_masks flag
+            )
+        elif chunk_type == 'strips' or use_autochunk:
             final_fgr_path, final_pha_path = reassemble_strip_chunks(
                 chunk_outputs, 
                 adjusted_width, 
