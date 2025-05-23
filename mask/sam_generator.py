@@ -131,22 +131,32 @@ class SAMMaskGenerator:
                             print("Preparing weights for manual loading...")
                             torch.save(checkpoint['model'], weights_only_path)
                     
-                    # Try loading with the original checkpoint
+                    # Try loading with manual approach to bypass SAM2's _load_checkpoint
                     print("Attempting to load SAM2 model...")
                     
-                    # Check if the issue is with weights_only=True in SAM2's _load_checkpoint
-                    # If the checkpoint has 'model' key, save it in the format SAM2 expects
                     if has_model_key:
-                        # SAM2's _load_checkpoint uses weights_only=True which can't load our checkpoint
-                        # So let's create a checkpoint without the 'model' wrapper
-                        fixed_path = model_path.replace('.pth', '_fixed.pth')
-                        if not os.path.exists(fixed_path):
-                            print("Creating SAM2-compatible checkpoint...")
-                            # Save just the state dict without wrapper
-                            torch.save(checkpoint['model'], fixed_path, _use_new_zipfile_serialization=False)
-                        model_path = fixed_path
-                    
-                    sam2_model = build_sam2(config_name, model_path, device=self.device)
+                        # Build model without checkpoint to bypass the problematic _load_checkpoint
+                        print("Building SAM2 model architecture...")
+                        sam2_model = build_sam2(config_name, checkpoint_path=None, device=self.device)
+                        
+                        print("Loading weights manually...")
+                        # Load the state dict directly
+                        state_dict = checkpoint['model']
+                        
+                        # Handle any potential state dict mismatches
+                        try:
+                            sam2_model.load_state_dict(state_dict, strict=True)
+                        except RuntimeError as e:
+                            print(f"Strict loading failed: {e}")
+                            # Try non-strict loading
+                            missing, unexpected = sam2_model.load_state_dict(state_dict, strict=False)
+                            if missing:
+                                print(f"Missing keys: {missing[:5]}...")  # Show first 5
+                            if unexpected:
+                                print(f"Unexpected keys: {unexpected[:5]}...")  # Show first 5
+                    else:
+                        # Try normal loading for checkpoints without 'model' wrapper
+                        sam2_model = build_sam2(config_name, model_path, device=self.device)
                     
                     self.predictor = SAM2ImagePredictor(sam2_model)
                     print("SAM2 model loaded successfully")
