@@ -42,17 +42,35 @@ class WidgetManager:
         style = ttk.Style()
         
         if platform.system() == "Windows":
-            # For Windows, apply a dark theme
-            try:
-                # Use the theme file from the UI directory
-                self.app.root.tk.call('source', os.path.join(os.path.dirname(__file__), 'azure_dark_tcl.tcl'))
-                style.theme_use('azure-dark')
-                self.app.root.configure(bg='#333333')
-                self.is_dark_theme = True
-            except tk.TclError:
-                # Fallback if custom theme fails
-                style.theme_use('vista')
-                self.is_dark_theme = False
+            # For Windows, use a clean modern theme with good visibility
+            style.theme_use('vista')  # Vista is the most modern built-in Windows theme
+            self.app.root.configure(bg='#f0f0f0')
+            self.is_dark_theme = False
+            
+            # Configure styles for better visibility
+            style.configure('TFrame', background='#f0f0f0')
+            style.configure('TLabel', background='#f0f0f0', foreground='#000000')
+            style.configure('TButton', relief='flat', borderwidth=1)
+            style.map('TButton',
+                     relief=[('pressed', 'groove'),
+                            ('active', 'raised')])
+            
+            # Better progress bar visibility
+            style.configure('TProgressbar', 
+                          troughcolor='#e0e0e0',
+                          background='#0078d4',  # Windows blue accent
+                          lightcolor='#0078d4',
+                          darkcolor='#0078d4',
+                          bordercolor='#c0c0c0',
+                          relief='flat')
+            
+            # Timeline scale visibility fix
+            style.configure('Horizontal.TScale',
+                          troughcolor='#e0e0e0',
+                          background='#f0f0f0',
+                          bordercolor='#c0c0c0',
+                          lightcolor='#f0f0f0',
+                          darkcolor='#d0d0d0')
         elif platform.system() == "Darwin":  # macOS
             # Use native macOS look with dark mode detection
             style.theme_use('aqua')
@@ -537,9 +555,18 @@ class WidgetManager:
         self.app.console_section.rowconfigure(0, weight=1)
         
         # Create the console with platform-specific styling for better visibility
-        console_bg = "#2D2D2D" if platform.system() == "Darwin" and self.is_dark_theme else "white"
-        console_fg = "white" if platform.system() == "Darwin" and self.is_dark_theme else "black"
-        console_font = ("Menlo" if platform.system() == "Darwin" else "Courier", 11 if platform.system() == "Darwin" else 9)
+        if platform.system() == "Windows":
+            console_bg = "white"
+            console_fg = "black"
+            console_font = ("Consolas", 10)  # Modern monospace font on Windows
+        elif platform.system() == "Darwin" and self.is_dark_theme:
+            console_bg = "#2D2D2D"
+            console_fg = "white"
+            console_font = ("Menlo", 11)
+        else:
+            console_bg = "white"
+            console_fg = "black"
+            console_font = ("Courier", 10)
         
         self.app.console = ScrolledText(self.app.console_section, height=12, wrap=tk.WORD, 
                                    bg=console_bg, fg=console_fg, font=console_font)

@@ -95,9 +95,9 @@ class SmartChunkPlacer:
                 # Scan all possible positions
                 for y in range(0, frame_height - o_height + 1, model_factor):
                     for x in range(0, frame_width - o_width + 1, model_factor):
-                        # Calculate improved score for this position
+                        # Calculate score for this position with slight centering preference
                         chunk_region = remaining_heat[y:y+o_height, x:x+o_width]
-                        score = self._calculate_centered_score(chunk_region, x, y, o_width, o_height)
+                        score = self._calculate_score_with_centering(chunk_region, x, y, o_width, o_height)
                         
                         if score > best_score:
                             best_score = score
@@ -130,14 +130,8 @@ class SmartChunkPlacer:
             
             self.placed_chunks.append(chunk_info)
             
-            # Get additional info about the chunk placement for debugging (before modifying heat map)
-            original_chunk_region = heat_map[y:y+best_orientation['height'], x:x+best_orientation['width']]
-            total_activity = np.sum(original_chunk_region)
-            centering_ratio = best_score / total_activity if total_activity > 0 else 1.0
-            
             print(f"Placed chunk {len(self.placed_chunks)}: {best_orientation['name']} "
-                  f"at ({x},{y}), score: {best_score:.2f}, "
-                  f"activity: {total_activity:.2f}, centering bonus: {centering_ratio:.2f}x")
+                  f"at ({x},{y}), score: {best_score:.2f}")
             
             # Mark this area as covered
             # Set to zero for the actual chunk area (not the overlap area)
@@ -173,9 +167,9 @@ class SmartChunkPlacer:
         print(f"Total chunks placed: {len(self.placed_chunks)}")
         return self.placed_chunks
     
-    def _calculate_centered_score(self, chunk_region, x, y, chunk_width, chunk_height):
+    def _calculate_score_with_centering(self, chunk_region, x, y, chunk_width, chunk_height):
         """
-        Calculate score that prioritizes centering important content within chunks.
+        Calculate score for chunk placement with slight preference for centering.
         
         Args:
             chunk_region: Heat map region for this chunk position
@@ -183,7 +177,7 @@ class SmartChunkPlacer:
             chunk_width, chunk_height: Dimensions of the chunk
             
         Returns:
-            Score favoring positions that center important content
+            Score for this chunk position
         """
         if chunk_region.size == 0:
             return 0
@@ -193,64 +187,27 @@ class SmartChunkPlacer:
         if total_activity == 0:
             return 0
         
-        # Find peak activity areas in the region
-        # Use a threshold to identify significant activity peaks
-        peak_threshold = np.percentile(chunk_region[chunk_region > 0], 85) if np.any(chunk_region > 0) else 0
-        peak_mask = chunk_region >= peak_threshold
+        # Find the center of mass of activity to check if subjects might be cut off
+        y_coords, x_coords = np.where(chunk_region > 0.1)
+        if len(y_coords) > 0:
+            weights = chunk_region[y_coords, x_coords]
+            center_y = np.average(y_coords, weights=weights)
+            center_x = np.average(x_coords, weights=weights)
+            
+            # Calculate how far the center is from chunk edges
+            edge_margin = min(chunk_width // 6, chunk_height // 6)  # 1/6 of chunk size
+            
+            # Check if center is too close to edges
+            too_close_to_edge = (center_x < edge_margin or 
+                               center_x > chunk_width - edge_margin or
+                               center_y < edge_margin or 
+                               center_y > chunk_height - edge_margin)
+            
+            # Small penalty if activity center is near edges (15% reduction)
+            if too_close_to_edge:
+                total_activity *= 0.85
         
-        if not np.any(peak_mask):
-            # No significant peaks, return base score
-            return total_activity
-        
-        # Calculate center of the chunk
-        center_x = chunk_width // 2
-        center_y = chunk_height // 2
-        
-        # Find center of mass of the peak activity
-        peak_positions = np.where(peak_mask)
-        if len(peak_positions[0]) == 0:
-            return total_activity
-        
-        # Calculate weighted center of mass for peaks
-        peak_weights = chunk_region[peak_mask]
-        peak_y_coords = peak_positions[0]
-        peak_x_coords = peak_positions[1]
-        
-        if np.sum(peak_weights) == 0:
-            return total_activity
-        
-        peak_center_y = np.average(peak_y_coords, weights=peak_weights)
-        peak_center_x = np.average(peak_x_coords, weights=peak_weights)
-        
-        # Calculate distance from chunk center to peak center
-        distance_from_center = np.sqrt((peak_center_x - center_x)**2 + (peak_center_y - center_y)**2)
-        max_distance = np.sqrt(center_x**2 + center_y**2)
-        
-        # Convert distance to a centering bonus (1.0 = perfectly centered, 0.0 = at edge)
-        if max_distance > 0:
-            centering_factor = 1.0 - (distance_from_center / max_distance)
-        else:
-            centering_factor = 1.0
-        
-        # Apply significant bonus for well-centered content
-        centering_bonus = 1.0 + (centering_factor * 2.0)  # Up to 3x bonus for perfect centering
-        
-        # Calculate final score
-        final_score = total_activity * centering_bonus
-        
-        # Additional bonus for chunks that have most of their activity near the center
-        center_region_size = max(chunk_width // 4, chunk_height // 4)
-        center_y_start = max(0, center_y - center_region_size)
-        center_y_end = min(chunk_height, center_y + center_region_size)
-        center_x_start = max(0, center_x - center_region_size)
-        center_x_end = min(chunk_width, center_x + center_region_size)
-        
-        center_activity = np.sum(chunk_region[center_y_start:center_y_end, center_x_start:center_x_end])
-        if total_activity > 0:
-            center_concentration = center_activity / total_activity
-            final_score *= (1.0 + center_concentration * 0.5)  # Up to 50% bonus for concentrated activity
-        
-        return final_score
+        return total_activity
     
     def _ensure_chunk_overlap(self):
         """
