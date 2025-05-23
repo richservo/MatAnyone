@@ -138,6 +138,26 @@ class SAMMaskGenerator:
                     
                     # Try loading with the (possibly extracted) checkpoint
                     print("Attempting to load SAM2 model...")
+                    
+                    # If we extracted weights, try building model without checkpoint first
+                    if has_model_key and weights_only_path:
+                        try:
+                            print("Building SAM2 model without checkpoint...")
+                            sam2_model = build_sam2(config_name, checkpoint_path=None, device=self.device)
+                            
+                            print("Loading extracted weights into model...")
+                            weights = torch.load(weights_only_path, map_location=self.device, weights_only=False)
+                            sam2_model.load_state_dict(weights, strict=True)
+                            
+                            self.predictor = SAM2ImagePredictor(sam2_model)
+                            print("SAM2 model loaded successfully with manual weight loading")
+                            self.model_type_loaded = "SAM2"
+                            return True
+                        except Exception as manual_error:
+                            print(f"Manual loading failed: {manual_error}")
+                            # Fall through to try normal loading
+                    
+                    # Try normal loading
                     sam2_model = build_sam2(config_name, model_path, device=self.device)
                     
                     self.predictor = SAM2ImagePredictor(sam2_model)
@@ -148,7 +168,8 @@ class SAMMaskGenerator:
                     import traceback
                     print(f"Failed to load SAM2: {str(build_error)}")
                     print("Full error traceback:")
-                    traceback.print_exc()
+                    import sys
+                    traceback.print_exc(file=sys.stdout)
                     
                     # Let's also try to see what's in the extracted weights
                     if has_model_key and os.path.exists(weights_only_path):
