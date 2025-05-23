@@ -86,7 +86,10 @@ class SAMMaskGenerator:
                     print(f"Model file not found at: {model_path}")
                     return False
                 
-                # Try to load and inspect the checkpoint first
+                # Load and analyze checkpoint
+                checkpoint = None
+                has_model_key = False
+                
                 try:
                     checkpoint = torch.load(model_path, map_location='cpu', weights_only=False)
                     if isinstance(checkpoint, dict):
@@ -94,50 +97,45 @@ class SAMMaskGenerator:
                         
                         # If checkpoint has 'model' key, we need to handle it differently
                         if 'model' in checkpoint:
+                            has_model_key = True
                             print("Detected wrapped checkpoint format...")
                             # Check what's inside the 'model' key
                             model_data = checkpoint['model']
                             if isinstance(model_data, dict):
                                 print(f"Model data keys: {list(model_data.keys())[:5]}...")
-                            
-                            # For SAM2, we might need the full checkpoint structure
-                            # Let's not modify it and see if build_sam2 can handle it
                 except Exception as e:
                     print(f"Error loading checkpoint file: {str(e)}")
                     return False
                 
                 try:
-                    # Try different loading approaches based on checkpoint structure
-                    if 'model' in checkpoint:
-                        # Try loading with checkpoint_path=None and passing state dict directly
-                        print("Attempting to build SAM2 model and load state dict manually...")
-                        sam2_model = build_sam2(config_name, checkpoint_path=None, device=self.device)
-                        
-                        # Load the state dict from the checkpoint
-                        if isinstance(checkpoint['model'], dict):
-                            sam2_model.load_state_dict(checkpoint['model'])
-                        else:
-                            # If 'model' contains something else, try the original path
-                            sam2_model = build_sam2(config_name, model_path, device=self.device)
-                    else:
-                        # Normal loading for standard checkpoints
-                        sam2_model = build_sam2(config_name, model_path, device=self.device)
+                    # The issue might be that we downloaded the wrong checkpoint format
+                    # Let's check if this is actually a full checkpoint with model config
+                    if has_model_key and 'cfg' in checkpoint:
+                        print("This appears to be a full training checkpoint, not just model weights.")
+                        print("SAM2 needs just the model weights file.")
+                        print("Please delete the current file and re-download.")
+                        return False
+                    
+                    # Try loading with the original checkpoint
+                    print("Attempting to load SAM2 model...")
+                    sam2_model = build_sam2(config_name, model_path, device=self.device)
                     
                     self.predictor = SAM2ImagePredictor(sam2_model)
                     print("SAM2 model loaded successfully")
                     self.model_type_loaded = "SAM2"
                     return True
                 except Exception as build_error:
-                    # Handle specific Windows error
-                    if "load_state_dict" in str(build_error):
-                        print("Note: SAM2 checkpoint format issue detected.")
-                        print("This may be due to an incompatible model file.")
-                        print("Please try:")
-                        print("1. Delete the model file and re-download it")
-                        print("2. Or use SAM1 which will be loaded automatically")
-                        model_size = os.path.getsize(model_path) / (1024 * 1024)  # Convert to MB
-                        print(f"Current model size: {model_size:.1f} MB (should be ~856 MB)")
-                    raise build_error
+                    import traceback
+                    print(f"Failed to load SAM2: {str(build_error)}")
+                    print("Full error traceback:")
+                    traceback.print_exc()
+                    
+                    # Handle specific errors
+                    if "load_state_dict" in str(build_error) or "Missing key" in str(build_error):
+                        print("\nNote: SAM2 checkpoint format issue detected.")
+                        print("This may be due to a version mismatch between SAM2 code and model.")
+                        
+                    return False
             except Exception as e:
                 # If loading on MPS fails, fallback to CPU
                 if str(self.device) == "mps":
