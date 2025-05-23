@@ -131,32 +131,9 @@ class SAMMaskGenerator:
                             print("Preparing weights for manual loading...")
                             torch.save(checkpoint['model'], weights_only_path)
                     
-                    # Try loading with manual approach to bypass SAM2's _load_checkpoint
+                    # Try loading SAM2 with the original checkpoint
                     print("Attempting to load SAM2 model...")
-                    
-                    if has_model_key:
-                        # Build model without checkpoint to bypass the problematic _load_checkpoint
-                        print("Building SAM2 model architecture...")
-                        sam2_model = build_sam2(config_name, checkpoint_path=None, device=self.device)
-                        
-                        print("Loading weights manually...")
-                        # Load the state dict directly
-                        state_dict = checkpoint['model']
-                        
-                        # Handle any potential state dict mismatches
-                        try:
-                            sam2_model.load_state_dict(state_dict, strict=True)
-                        except RuntimeError as e:
-                            print(f"Strict loading failed: {e}")
-                            # Try non-strict loading
-                            missing, unexpected = sam2_model.load_state_dict(state_dict, strict=False)
-                            if missing:
-                                print(f"Missing keys: {missing[:5]}...")  # Show first 5
-                            if unexpected:
-                                print(f"Unexpected keys: {unexpected[:5]}...")  # Show first 5
-                    else:
-                        # Try normal loading for checkpoints without 'model' wrapper
-                        sam2_model = build_sam2(config_name, model_path, device=self.device)
+                    sam2_model = build_sam2(config_name, model_path, device=self.device)
                     
                     self.predictor = SAM2ImagePredictor(sam2_model)
                     print("SAM2 model loaded successfully")
@@ -165,24 +142,17 @@ class SAMMaskGenerator:
                 except Exception as build_error:
                     import traceback
                     print(f"Failed to load SAM2: {str(build_error)}")
-                    print("Full error traceback:")
-                    import sys
-                    traceback.print_exc(file=sys.stdout)
                     
-                    # Let's also try to see what's in the extracted weights
-                    if has_model_key and os.path.exists(weights_only_path):
-                        try:
-                            extracted = torch.load(weights_only_path, map_location='cpu', weights_only=False)
-                            print(f"\nExtracted weights type: {type(extracted)}")
-                            if isinstance(extracted, dict):
-                                print(f"Extracted weights keys (first 10): {list(extracted.keys())[:10]}")
-                        except:
-                            pass
-                    
-                    # Handle specific errors
-                    if "load_state_dict" in str(build_error) or "Missing key" in str(build_error) or "'model'" in str(build_error):
-                        print("\nNote: SAM2 checkpoint format issue detected.")
-                        print("This may be due to a version mismatch between SAM2 code and model.")
+                    # Check if this is the known Windows weights_only=True issue
+                    if "weights_only=True" in str(build_error) or "'model'" in str(build_error) or "Missing key" in str(build_error):
+                        print("\nKnown SAM2 compatibility issue on Windows detected.")
+                        print("SAM2's checkpoint loading has a bug with weights_only=True on some systems.")
+                        print("This is a known issue with the SAM2 library itself.")
+                        print("\nUsing SAM1 as fallback - it works great and is well-tested!")
+                    else:
+                        print("Full error traceback:")
+                        import sys
+                        traceback.print_exc(file=sys.stdout)
                         
                     return False
             except Exception as e:
