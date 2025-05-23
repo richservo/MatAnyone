@@ -208,6 +208,8 @@ The MatAnyone GUI features an groundbreaking **Smart Chunking System** that anal
 
 ![Smart Chunking Demo](assets/smart_chunking_demo.png)
 
+**📚 For developers:** See the [Smart Chunking Developer Guide](SMART_CHUNKING_GUIDE.md) for detailed documentation on using this system in your own projects.
+
 ### How Smart Chunking Works
 
 1. **Heat Map Analysis**: The system analyzes the entire mask sequence to create a "heat map" showing where activity occurs throughout the video
