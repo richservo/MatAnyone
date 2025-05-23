@@ -515,12 +515,21 @@ class MaskUIBase:
             is_current = (current_frame is not None and frame == current_frame)
             has_mask = frame in self.mask_generated_frames
             
-            if has_mask:
-                color = "red"  # Persistent red for frames with generated masks
-            elif is_current:
-                color = "yellow"  # Yellow for current frame position (both long and short ticks)
+            # Use different colors for Windows light theme
+            if platform.system() == "Windows":
+                if has_mask:
+                    color = "#d00000"  # Dark red for frames with generated masks
+                elif is_current:
+                    color = "#0078d4"  # Windows blue for current frame
+                else:
+                    color = "black" if frame % 5 == 0 else "#808080"  # Black/gray for normal
             else:
-                color = "white" if frame % 5 == 0 else "lightgray"  # Normal colors
+                if has_mask:
+                    color = "red"  # Persistent red for frames with generated masks
+                elif is_current:
+                    color = "yellow"  # Yellow for current frame position
+                else:
+                    color = "white" if frame % 5 == 0 else "lightgray"  # Normal colors
             
             # Long hashmark every 5th frame (0, 5, 10, etc.)
             if frame % 5 == 0:
