@@ -40,6 +40,7 @@ class SAMMaskGenerator:
         """Try to load SAM2 model"""
         try:
             import torch
+            import os
             from sam2.build_sam import build_sam2
             from sam2.sam2_image_predictor import SAM2ImagePredictor
             
@@ -80,11 +81,37 @@ class SAMMaskGenerator:
             try:
                 # Load SAM2 model
                 print(f"Loading SAM2 model on {self.device}...")
-                sam2_model = build_sam2(config_name, model_path, device=self.device)
-                self.predictor = SAM2ImagePredictor(sam2_model)
-                print("SAM2 model loaded successfully")
-                self.model_type_loaded = "SAM2"
-                return True
+                # Check if model file exists and is valid
+                if not os.path.exists(model_path):
+                    print(f"Model file not found at: {model_path}")
+                    return False
+                
+                # Try to load and inspect the checkpoint first
+                try:
+                    checkpoint = torch.load(model_path, map_location='cpu')
+                    if isinstance(checkpoint, dict):
+                        print(f"Checkpoint keys: {list(checkpoint.keys())[:5]}...")  # Show first 5 keys
+                except Exception as e:
+                    print(f"Error loading checkpoint file: {str(e)}")
+                    return False
+                
+                try:
+                    sam2_model = build_sam2(config_name, model_path, device=self.device)
+                    self.predictor = SAM2ImagePredictor(sam2_model)
+                    print("SAM2 model loaded successfully")
+                    self.model_type_loaded = "SAM2"
+                    return True
+                except Exception as build_error:
+                    # Handle specific Windows error
+                    if "load_state_dict" in str(build_error):
+                        print("Note: SAM2 checkpoint format issue detected.")
+                        print("This may be due to an incompatible model file.")
+                        print("Please try:")
+                        print("1. Delete the model file and re-download it")
+                        print("2. Or use SAM1 which will be loaded automatically")
+                        model_size = os.path.getsize(model_path) / (1024 * 1024)  # Convert to MB
+                        print(f"Current model size: {model_size:.1f} MB (should be ~856 MB)")
+                    raise build_error
             except Exception as e:
                 # If loading on MPS fails, fallback to CPU
                 if str(self.device) == "mps":
@@ -249,8 +276,8 @@ class SAMMaskGenerator:
         
         # Define URLs for SAM2 models
         urls = {
-            "sam2_hiera_l.pth": "https://dl.fbaipublicfiles.com/segment_anything_2/sam2_hiera_l.pth",
-            "sam2_hiera_b+.pth": "https://dl.fbaipublicfiles.com/segment_anything_2/sam2_hiera_b%2B.pth"
+            "sam2_hiera_l.pth": "https://dl.fbaipublicfiles.com/segment_anything_2/072824/sam2_hiera_large.pt",
+            "sam2_hiera_b+.pth": "https://dl.fbaipublicfiles.com/segment_anything_2/072824/sam2_hiera_base_plus.pt"
         }
         
         if checkpoint_name not in urls:

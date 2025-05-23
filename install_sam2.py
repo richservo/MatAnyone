@@ -9,6 +9,7 @@ import sys
 import subprocess
 import shutil
 import tempfile
+import platform
 from pathlib import Path
 
 def run_command(cmd, check=True):
@@ -51,7 +52,13 @@ def download_model():
         return True
     
     print_status("Downloading SAM2 model weights (856MB)...", "info")
-    download_cmd = f'curl -L -o "{model_path}" "https://dl.fbaipublicfiles.com/segment_anything_2/072824/sam2_hiera_large.pt"'
+    # Use appropriate download command based on platform
+    import platform
+    if platform.system() == "Windows":
+        # Use PowerShell's Invoke-WebRequest for Windows
+        download_cmd = f'powershell -Command "Invoke-WebRequest -Uri \'https://dl.fbaipublicfiles.com/segment_anything_2/072824/sam2_hiera_large.pt\' -OutFile \'{model_path}\'"'
+    else:
+        download_cmd = f'curl -L -o "{model_path}" "https://dl.fbaipublicfiles.com/segment_anything_2/072824/sam2_hiera_large.pt"'
     print_status("This will take a few minutes depending on your internet speed...", "info")
     output, code = run_command(download_cmd, check=False)
     
