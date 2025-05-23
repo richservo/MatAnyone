@@ -108,15 +108,22 @@ class SAMMaskGenerator:
                     return False
                 
                 try:
-                    # The issue might be that we downloaded the wrong checkpoint format
-                    # Let's check if this is actually a full checkpoint with model config
-                    if has_model_key and 'cfg' in checkpoint:
-                        print("This appears to be a full training checkpoint, not just model weights.")
-                        print("SAM2 needs just the model weights file.")
-                        print("Please delete the current file and re-download.")
-                        return False
+                    # If checkpoint has 'model' key, we need to extract and save just the weights
+                    if has_model_key:
+                        print("Extracting model weights from checkpoint...")
+                        # Create a new checkpoint file with just the state dict
+                        weights_only_path = model_path.replace('.pth', '_weights.pth')
+                        
+                        # Check if we already extracted it
+                        if not os.path.exists(weights_only_path):
+                            # Save just the model state dict
+                            torch.save(checkpoint['model'], weights_only_path)
+                            print(f"Saved extracted weights to: {weights_only_path}")
+                        
+                        # Use the extracted weights file
+                        model_path = weights_only_path
                     
-                    # Try loading with the original checkpoint
+                    # Try loading with the (possibly extracted) checkpoint
                     print("Attempting to load SAM2 model...")
                     sam2_model = build_sam2(config_name, model_path, device=self.device)
                     
