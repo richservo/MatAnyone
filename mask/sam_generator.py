@@ -105,17 +105,8 @@ class SAMMaskGenerator:
                 
                 try:
                     checkpoint = torch.load(model_path, map_location='cpu', weights_only=False)
-                    if isinstance(checkpoint, dict):
-                        print(f"Checkpoint keys: {list(checkpoint.keys())[:5]}...")  # Show first 5 keys
-                        
-                        # If checkpoint has 'model' key, we need to handle it differently
-                        if 'model' in checkpoint:
-                            has_model_key = True
-                            print("Detected wrapped checkpoint format...")
-                            # Check what's inside the 'model' key
-                            model_data = checkpoint['model']
-                            if isinstance(model_data, dict):
-                                print(f"Model data keys: {list(model_data.keys())[:5]}...")
+                    # Check if it's a wrapped checkpoint
+                    has_model_key = 'model' in checkpoint if isinstance(checkpoint, dict) else False
                 except Exception as e:
                     print(f"Error loading checkpoint file: {str(e)}")
                     return False
@@ -151,8 +142,6 @@ class SAMMaskGenerator:
                         missing_keys = set(model_state.keys()) - set(filtered_state_dict.keys())
                         unexpected_keys = set(state_dict.keys()) - set(model_state.keys())
                         
-                        if unexpected_keys:
-                            print(f"Ignoring unexpected keys from SAM2.1: {list(unexpected_keys)[:5]}...")
                         
                         sam2_model.load_state_dict(filtered_state_dict, strict=False)
                     else:
