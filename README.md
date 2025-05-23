@@ -378,6 +378,18 @@ This eliminates the traditional limitation of needing subjects in frame 0, makin
 
 This project is licensed under <a rel="license" href="./LICENSE">NTU S-Lab License 1.0</a>. Redistribution and use should follow this license.
 
+### GUI Components License
+
+While the MatAnyone model itself is not licensed for commercial use, the GUI frontend components are designed to work independently of the model, which only handles inference. The GUI elements, including:
+- The graphical user interface (matanyone_gui.py)
+- Mask generation and editing tools
+- Video processing utilities
+- Chunking and optimization systems
+
+can be used freely in any way you see fit, including commercial applications. These components are modular and can work with any compatible video matting model that provides similar inference capabilities.
+
+For detailed documentation on using the Smart Chunking System independently, see [SMART_CHUNKING_GUIDE.md](SMART_CHUNKING_GUIDE.md) and the [examples](examples/) directory.
+
 ## 👏 Acknowledgement
 
 This project is built upon [Cutie](https://github.com/hkchengrex/Cutie), with the interactive demo adapted from [ProPainter](https://github.com/sczhou/ProPainter), leveraging segmentation capabilities from [Segment Anything Model](https://github.com/facebookresearch/segment-anything) and [Segment Anything Model 2](https://github.com/facebookresearch/sam2). Thanks for their awesome works!
