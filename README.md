@@ -382,7 +382,9 @@ This project is licensed under <a rel="license" href="./LICENSE">NTU S-Lab Licen
 
 ### GUI Components License
 
-While the MatAnyone model itself is not licensed for commercial use, the GUI frontend components are designed to work independently of the model, which only handles inference. The GUI elements, including:
+This repository contains an independent GUI frontend that uses MatAnyone as a backend inference engine. The GUI and all its components were developed independently and are not affiliated with the original MatAnyone project.
+
+The GUI frontend components are designed to work independently of the model, which only handles inference. All GUI elements, including:
 - The graphical user interface (matanyone_gui.py)
 - Mask generation and editing tools
 - Video processing utilities

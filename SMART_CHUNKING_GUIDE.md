@@ -380,7 +380,9 @@ def process_chunks_parallel(chunks, frame, process_fn):
 
 ## License
 
-The Smart Chunking System is part of the MatAnyone project's GUI components and is freely available for any use, including commercial applications. While the MatAnyone model has licensing restrictions, all GUI and utility components, including this chunking system, can be used without restriction.
+The Smart Chunking System is part of an independent GUI frontend that uses MatAnyone as a backend. This GUI and all its components, including the Smart Chunking System, were developed independently and are not affiliated with the original MatAnyone project.
+
+All GUI components and utilities in this repository, including the Smart Chunking System, are freely available for any use, including commercial applications. These tools are designed to be modular and can work with any compatible video processing backend.
 
 ## Contributing
 
