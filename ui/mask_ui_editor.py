@@ -75,9 +75,20 @@ class MaskEditor:
                 previous_edited_mask = self.ui.edited_mask
                 
                 # Generate mask - use both points and box together for better results
-                mask, score = self.ui.mask_generator.generate_mask_from_image(
-                    self.ui.image, points=points_np, box=box, multimask_output=True
+                # Get logits for potential threshold adjustment
+                mask_result = self.ui.mask_generator.generate_mask_from_image(
+                    self.ui.image, points=points_np, box=box, multimask_output=True, return_logits=True
                 )
+                
+                # Handle both old (mask, score) and new (mask, score, logits) return formats
+                if len(mask_result) == 3:
+                    mask, score, logits = mask_result
+                    # Apply stability filtering if enabled
+                    if hasattr(self.ui.mask_generator, 'stability_score_threshold') and self.ui.mask_generator.stability_score_threshold > 0:
+                        mask = self.ui.mask_generator.filter_mask_by_stability(mask, logits)
+                else:
+                    mask, score = mask_result
+                    
                 print(f"Generated mask with confidence {score:.4f}")
                 
                 # Store the generated mask (ensure it's a boolean array)

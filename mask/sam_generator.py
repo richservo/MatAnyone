@@ -28,6 +28,13 @@ class SAMMaskGenerator:
         self.predictor = None
         self.model_type_loaded = None
         
+        # Threshold settings for better control
+        self.mask_threshold = 0.0  # Default SAM threshold for converting logits to binary mask
+        self.stability_score_threshold = 0.95  # Higher = more stable masks only
+        self.stability_score_offset = 1.0  # Offset for calculating stability score
+        self.box_nms_thresh = 0.7  # Non-max suppression threshold for boxes
+        self.crop_nms_thresh = 0.7  # Non-max suppression threshold for crops
+        
     def load_model(self):
         """Load and initialize the SAM model (tries SAM2 first, falls back to SAM)"""
         # Try SAM2 first (better quality), then fall back to original SAM
@@ -381,7 +388,7 @@ class SAMMaskGenerator:
         print(f"\nSave the file as: {model_path}")
         raise Exception("Failed to download SAM2 model from all URLs")
     
-    def generate_mask_from_image(self, image, points=None, box=None, multimask_output=True):
+    def generate_mask_from_image(self, image, points=None, box=None, multimask_output=True, return_logits=False):
         """
         Generate a mask from an image using SAM
         
@@ -390,9 +397,10 @@ class SAMMaskGenerator:
             points: Points to consider for mask generation [x, y, label], label: 1 for foreground, 0 for background
             box: Bounding box for mask generation [x1, y1, x2, y2]
             multimask_output: Whether to return multiple masks
+            return_logits: Whether to return raw logits for custom thresholding
         
         Returns:
-            Generated mask and confidence score
+            Generated mask, confidence score, and optionally logits
         """
         import numpy as np
         import torch
@@ -402,6 +410,10 @@ class SAMMaskGenerator:
         
         # Set the image for the predictor
         self.predictor.set_image(image)
+        
+        # Apply custom threshold if set (SAM uses 0.0 by default)
+        if hasattr(self.predictor, 'model') and hasattr(self.predictor.model, 'mask_threshold'):
+            self.predictor.model.mask_threshold = self.mask_threshold
         
         # Generate masks based on provided input
         if points is not None and len(points) > 0:
@@ -447,9 +459,93 @@ class SAMMaskGenerator:
         # Return the mask with the highest score
         if multimask_output:
             mask_idx = np.argmax(scores)
+            if return_logits:
+                return masks[mask_idx], scores[mask_idx], logits[mask_idx]
             return masks[mask_idx], scores[mask_idx]
         else:
+            if return_logits:
+                return masks[0], scores[0], logits[0]
             return masks[0], scores[0]
+    
+    def apply_custom_threshold(self, logits, threshold=None):
+        """
+        Apply custom threshold to logits to generate binary mask
+        
+        Args:
+            logits: Raw logits from SAM prediction
+            threshold: Custom threshold (uses self.mask_threshold if None)
+        
+        Returns:
+            Binary mask
+        """
+        import numpy as np
+        
+        if threshold is None:
+            threshold = self.mask_threshold
+        
+        # Convert logits to binary mask using threshold
+        mask = logits > threshold
+        return mask.astype(np.uint8)
+    
+    def filter_mask_by_stability(self, mask, logits, stability_threshold=None):
+        """
+        Filter mask based on stability score to reduce shuttering
+        
+        Args:
+            mask: Binary mask
+            logits: Raw logits from SAM
+            stability_threshold: Minimum stability score (uses self.stability_score_threshold if None)
+        
+        Returns:
+            Filtered mask
+        """
+        import numpy as np
+        import cv2
+        
+        if stability_threshold is None:
+            stability_threshold = self.stability_score_threshold
+        
+        # Ensure mask is boolean type
+        mask_bool = mask.astype(bool)
+        
+        # Check if logits need to be resized to match mask dimensions
+        if logits.shape != mask.shape:
+            # Resize logits to match mask size
+            # Use bilinear interpolation for smooth transitions
+            logits_resized = cv2.resize(logits.astype(np.float32), 
+                                       (mask.shape[1], mask.shape[0]), 
+                                       interpolation=cv2.INTER_LINEAR)
+        else:
+            logits_resized = logits
+        
+        # Calculate stability score (how confident the model is)
+        # Areas where logits are close to threshold are less stable
+        stability = np.abs(logits_resized - self.mask_threshold)
+        
+        # Create stability mask
+        stable_mask = stability > (stability_threshold * self.stability_score_offset)
+        stable_mask = stable_mask.astype(bool)
+        
+        # Apply stability filter to original mask using logical AND
+        filtered_mask = np.logical_and(mask_bool, stable_mask)
+        
+        return filtered_mask.astype(np.uint8)
+    
+    def set_thresholds(self, mask_threshold=None, stability_threshold=None, stability_offset=None):
+        """
+        Set threshold values for mask generation
+        
+        Args:
+            mask_threshold: Threshold for converting logits to binary mask (default: 0.0)
+            stability_threshold: Minimum stability score (default: 0.95)
+            stability_offset: Offset for stability calculation (default: 1.0)
+        """
+        if mask_threshold is not None:
+            self.mask_threshold = mask_threshold
+        if stability_threshold is not None:
+            self.stability_score_threshold = stability_threshold
+        if stability_offset is not None:
+            self.stability_score_offset = stability_offset
 
     def extract_frame(self, video_path, frame_index=0):
         """

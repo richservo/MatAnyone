@@ -207,6 +207,9 @@ class MaskUIBase:
         # Create paint settings frame
         self.create_paint_settings_frame(main_frame)
         
+        # Create SAM threshold settings frame
+        self.create_threshold_settings_frame(main_frame)
+        
         # Create button frames
         self.create_button_frames(main_frame, mask_save_path)
         
@@ -379,6 +382,60 @@ class MaskUIBase:
         # Initially hide paint settings
         self.paint_frame.pack_forget()
     
+    def create_threshold_settings_frame(self, parent):
+        """Create the SAM threshold settings frame"""
+        self.threshold_frame = ttk.LabelFrame(parent, text="SAM Threshold Settings (Advanced)")
+        self.threshold_frame.pack(pady=5, fill=tk.X, padx=20)
+        
+        # Create variables for thresholds
+        self.mask_threshold_var = tk.DoubleVar(value=0.0)
+        self.stability_threshold_var = tk.DoubleVar(value=0.95)
+        
+        # Mask threshold slider
+        mask_thresh_frame = ttk.Frame(self.threshold_frame)
+        mask_thresh_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        ttk.Label(mask_thresh_frame, text="Mask Threshold:").pack(side=tk.LEFT, padx=5)
+        mask_thresh_slider = ttk.Scale(mask_thresh_frame, from_=-3.0, to=3.0, 
+                                     variable=self.mask_threshold_var,
+                                     orient=tk.HORIZONTAL, length=200,
+                                     command=self._on_threshold_changed)
+        mask_thresh_slider.pack(side=tk.LEFT, padx=5)
+        
+        self.mask_thresh_label = ttk.Label(mask_thresh_frame, text="0.0")
+        self.mask_thresh_label.pack(side=tk.LEFT, padx=5)
+        
+        # Add tooltip
+        Tooltip(mask_thresh_slider, "Controls mask sensitivity. Lower = more inclusive, Higher = more selective")
+        
+        # Stability threshold slider
+        stability_frame = ttk.Frame(self.threshold_frame)
+        stability_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        ttk.Label(stability_frame, text="Stability Filter:").pack(side=tk.LEFT, padx=5)
+        stability_slider = ttk.Scale(stability_frame, from_=0.0, to=1.0,
+                                   variable=self.stability_threshold_var,
+                                   orient=tk.HORIZONTAL, length=200,
+                                   command=self._on_stability_changed)
+        stability_slider.pack(side=tk.LEFT, padx=5)
+        
+        self.stability_label = ttk.Label(stability_frame, text="0.95")
+        self.stability_label.pack(side=tk.LEFT, padx=5)
+        
+        # Add tooltip
+        Tooltip(stability_slider, "Filters unstable mask edges. Higher = cleaner edges but may lose detail")
+        
+        # Reset button
+        reset_button = ttk.Button(self.threshold_frame, text="Reset to Defaults", 
+                                command=self._reset_thresholds)
+        reset_button.pack(pady=5)
+        
+        # Initially hide the threshold frame (can be toggled with a button)
+        self.threshold_frame.pack_forget()
+        
+        # Add toggle button in the main UI
+        self.show_thresholds = False
+    
     def create_button_frames(self, parent, mask_save_path):
         """Create the button frames for controls"""
         # Buttons frame
@@ -423,6 +480,11 @@ class MaskUIBase:
         # Add help button
         ttk.Button(zoom_frame, text="Help", 
                  command=self.show_help_dialog).pack(side=tk.LEFT, padx=5)
+        
+        # Add threshold settings toggle button
+        self.threshold_button = ttk.Button(zoom_frame, text="Thresholds", 
+                                         command=self._toggle_threshold_settings)
+        self.threshold_button.pack(side=tk.LEFT, padx=5)
         
     def create_navigation_controls(self, parent):
         """Create frame navigation controls"""
@@ -579,6 +641,50 @@ class MaskUIBase:
                 self.main_app.config_manager.save_settings(self.main_app)
             except Exception as e:
                 print(f"Error saving brush size to config: {e}")
+    
+    def _toggle_threshold_settings(self):
+        """Toggle visibility of threshold settings"""
+        self.show_thresholds = not self.show_thresholds
+        if self.show_thresholds:
+            # Pack it in the main frame where it was originally created
+            self.threshold_frame.pack(pady=5, fill=tk.X, padx=20)
+            # Move it to the right position by re-packing other frames
+            if hasattr(self, 'button_frame_container'):
+                self.button_frame_container.pack_forget()
+                self.button_frame_container.pack(pady=10)
+        else:
+            self.threshold_frame.pack_forget()
+    
+    def _on_threshold_changed(self, value):
+        """Handle mask threshold change"""
+        threshold = float(value)
+        self.mask_thresh_label.config(text=f"{threshold:.2f}")
+        
+        # Update the mask generator if it exists
+        if hasattr(self, 'mask_generator') and self.mask_generator:
+            self.mask_generator.set_thresholds(mask_threshold=threshold)
+    
+    def _on_stability_changed(self, value):
+        """Handle stability threshold change"""
+        stability = float(value)
+        self.stability_label.config(text=f"{stability:.2f}")
+        
+        # Update the mask generator if it exists
+        if hasattr(self, 'mask_generator') and self.mask_generator:
+            self.mask_generator.set_thresholds(stability_threshold=stability)
+    
+    def _reset_thresholds(self):
+        """Reset thresholds to default values"""
+        self.mask_threshold_var.set(0.0)
+        self.stability_threshold_var.set(0.95)
+        
+        # Update labels
+        self.mask_thresh_label.config(text="0.0")
+        self.stability_label.config(text="0.95")
+        
+        # Update the mask generator
+        if hasattr(self, 'mask_generator') and self.mask_generator:
+            self.mask_generator.set_thresholds(mask_threshold=0.0, stability_threshold=0.95)
     
     def _load_existing_mask(self, mask_save_path):
         """Load the existing mask from the main GUI mask input field"""
@@ -760,7 +866,17 @@ Checkpoints:
 • Point mode works best for objects with clear boundaries
 • Box mode is fastest for well-defined rectangular subjects
 • Paint mode is perfect for fine-tuning difficult areas
-• The system processes forward and backward from your keyframes automatically"""
+• The system processes forward and backward from your keyframes automatically
+
+🎛️ THRESHOLD SETTINGS (Advanced)
+
+Click "Thresholds" button to adjust mask generation sensitivity:
+• Mask Threshold: Controls edge sensitivity (-3 to 3)
+  - Lower values = more inclusive masks
+  - Higher values = more selective masks
+• Stability Filter: Reduces flickering/shuttering (0 to 1)
+  - Higher values = cleaner edges but may lose detail
+  - Lower values = preserve all details but may flicker"""
 
         create_message_dialog(
             self.mask_window, 
