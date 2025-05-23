@@ -143,16 +143,27 @@ class SAMMaskGenerator:
                     import traceback
                     print(f"Failed to load SAM2: {str(build_error)}")
                     
-                    # Check if this is the known Windows weights_only=True issue
-                    if "weights_only=True" in str(build_error) or "'model'" in str(build_error) or "Missing key" in str(build_error):
-                        print("\nKnown SAM2 compatibility issue on Windows detected.")
-                        print("SAM2's checkpoint loading has a bug with weights_only=True on some systems.")
-                        print("This is a known issue with the SAM2 library itself.")
-                        print("\nUsing SAM1 as fallback - it works great and is well-tested!")
-                    else:
-                        print("Full error traceback:")
-                        import sys
-                        traceback.print_exc(file=sys.stdout)
+                    print("Full error traceback:")
+                    import sys
+                    traceback.print_exc(file=sys.stdout)
+                    
+                    # Let's check the actual error location
+                    if "_load_checkpoint" in str(traceback.format_exc()) or "KeyError: 'model'" in str(traceback.format_exc()):
+                        print("\nCheckpoint format issue detected:")
+                        print(f"Model path: {model_path}")
+                        print(f"Config: {config_name}")
+                        
+                        # The error shows SAM2 expects the checkpoint to work with weights_only=True
+                        print("\nThe checkpoint format doesn't match what SAM2 expects.")
+                        print("This might be an old checkpoint format.")
+                        print("\nTo fix this:")
+                        print(f"1. Delete the old checkpoint: {model_path}")
+                        print("2. The new SAM2.1 checkpoint will be downloaded automatically")
+                        print("\nOr manually delete and re-run:")
+                        if platform.system() == "Windows":
+                            print(f"   del \"{model_path}\"")
+                        else:
+                            print(f"   rm \"{model_path}\"")
                         
                     return False
             except Exception as e:
@@ -317,10 +328,13 @@ class SAMMaskGenerator:
         if os.path.exists(local_model_path):
             return local_model_path
         
-        # Define URLs for SAM2 models
+        # Define URLs for SAM2 models - try the latest checkpoint format
+        # These are from the official SAM2 model zoo
         urls = {
-            "sam2_hiera_l.pth": "https://dl.fbaipublicfiles.com/segment_anything_2/072824/sam2_hiera_large.pt",
-            "sam2_hiera_b+.pth": "https://dl.fbaipublicfiles.com/segment_anything_2/072824/sam2_hiera_base_plus.pt"
+            "sam2_hiera_l.pth": "https://dl.fbaipublicfiles.com/segment_anything_2/sam2.1_checkpoints/sam2.1_hiera_large.pt",
+            "sam2_hiera_b+.pth": "https://dl.fbaipublicfiles.com/segment_anything_2/sam2.1_checkpoints/sam2.1_hiera_base_plus.pt",
+            # Fallback to older URLs if needed
+            "sam2_hiera_l_old.pth": "https://dl.fbaipublicfiles.com/segment_anything_2/072824/sam2_hiera_large.pt",
         }
         
         if checkpoint_name not in urls:
