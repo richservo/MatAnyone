@@ -328,13 +328,13 @@ class SAMMaskGenerator:
         if os.path.exists(local_model_path):
             return local_model_path
         
-        # Define URLs for SAM2 models - try the latest checkpoint format
-        # These are from the official SAM2 model zoo
+        # Define URLs for SAM2 models
+        # Updated URLs based on the official SAM2 repository
         urls = {
-            "sam2_hiera_l.pth": "https://dl.fbaipublicfiles.com/segment_anything_2/sam2.1_checkpoints/sam2.1_hiera_large.pt",
-            "sam2_hiera_b+.pth": "https://dl.fbaipublicfiles.com/segment_anything_2/sam2.1_checkpoints/sam2.1_hiera_base_plus.pt",
-            # Fallback to older URLs if needed
-            "sam2_hiera_l_old.pth": "https://dl.fbaipublicfiles.com/segment_anything_2/072824/sam2_hiera_large.pt",
+            "sam2_hiera_l.pth": "https://dl.fbaipublicfiles.com/segment_anything_2/10312024/sam2.1_hiera_large.pt",
+            "sam2_hiera_b+.pth": "https://dl.fbaipublicfiles.com/segment_anything_2/10312024/sam2.1_hiera_base_plus.pt",
+            # Alternative URLs
+            "sam2_hiera_l_alt.pth": "https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2_hiera_large.pt",
         }
         
         if checkpoint_name not in urls:
@@ -342,17 +342,31 @@ class SAMMaskGenerator:
             print(f"Available models: {list(urls.keys())}")
             raise ValueError(f"Unknown SAM2 model: {checkpoint_name}")
         
-        try:
-            import urllib.request
-            print(f"Downloading SAM2 model from {urls[checkpoint_name]}...")
-            urllib.request.urlretrieve(urls[checkpoint_name], model_path)
-            print(f"SAM2 model downloaded to {model_path}")
-            return model_path
-        except Exception as e:
-            print(f"Error downloading SAM2 model: {str(e)}")
-            print(f"Please download the model manually from {urls[checkpoint_name]}")
-            print(f"And place it in {model_path} or in the application directory")
-            raise
+        # Try multiple URLs in case some are not accessible
+        url_list = [
+            urls[checkpoint_name],
+            "https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2_hiera_large.pt",
+            "https://dl.fbaipublicfiles.com/segment_anything_2/072824/sam2_hiera_large.pt",
+        ]
+        
+        import urllib.request
+        for url in url_list:
+            try:
+                print(f"Trying to download SAM2 model from {url}...")
+                urllib.request.urlretrieve(url, model_path)
+                print(f"SAM2 model downloaded successfully to {model_path}")
+                return model_path
+            except Exception as e:
+                print(f"Failed with {url}: {str(e)}")
+                continue
+        
+        # If all URLs fail
+        print("\nAll download attempts failed. Please download the model manually.")
+        print("Try one of these URLs:")
+        for url in url_list:
+            print(f"  - {url}")
+        print(f"\nSave the file as: {model_path}")
+        raise Exception("Failed to download SAM2 model from all URLs")
     
     def generate_mask_from_image(self, image, points=None, box=None, multimask_output=True):
         """
