@@ -72,8 +72,20 @@ class SAMMaskGenerator:
             
             # Use the large model by default for best quality
             model_name = "sam2_hiera_l.pth"
-            # Note: SAM2 config files are embedded in the package, not separate files
-            config_name = "sam2_hiera_l.yaml"
+            # Try different config names - sam2.1 uses different naming
+            config_name = "sam2.1_hiera_l.yaml"
+            
+            # First check if new config exists, otherwise use old one
+            try:
+                from sam2 import sam2_configs
+                # This will raise an error if config doesn't exist
+                test_cfg = sam2_configs._CONFIGS.get(config_name)
+                if test_cfg is None:
+                    config_name = "sam2_hiera_l.yaml"
+                    print(f"Using config: {config_name}")
+            except:
+                config_name = "sam2_hiera_l.yaml"
+                print(f"Using fallback config: {config_name}")
             
             # Download the model if it doesn't exist
             model_path = self._download_sam2_model(model_name)
@@ -89,6 +101,7 @@ class SAMMaskGenerator:
                 # Load and analyze checkpoint
                 checkpoint = None
                 has_model_key = False
+                weights_only_path = None
                 
                 try:
                     checkpoint = torch.load(model_path, map_location='cpu', weights_only=False)
@@ -137,8 +150,18 @@ class SAMMaskGenerator:
                     print("Full error traceback:")
                     traceback.print_exc()
                     
+                    # Let's also try to see what's in the extracted weights
+                    if has_model_key and os.path.exists(weights_only_path):
+                        try:
+                            extracted = torch.load(weights_only_path, map_location='cpu', weights_only=False)
+                            print(f"\nExtracted weights type: {type(extracted)}")
+                            if isinstance(extracted, dict):
+                                print(f"Extracted weights keys (first 10): {list(extracted.keys())[:10]}")
+                        except:
+                            pass
+                    
                     # Handle specific errors
-                    if "load_state_dict" in str(build_error) or "Missing key" in str(build_error):
+                    if "load_state_dict" in str(build_error) or "Missing key" in str(build_error) or "'model'" in str(build_error):
                         print("\nNote: SAM2 checkpoint format issue detected.")
                         print("This may be due to a version mismatch between SAM2 code and model.")
                         
