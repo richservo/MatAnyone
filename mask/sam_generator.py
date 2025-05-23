@@ -91,15 +91,31 @@ class SAMMaskGenerator:
                     checkpoint = torch.load(model_path, map_location='cpu', weights_only=False)
                     if isinstance(checkpoint, dict):
                         print(f"Checkpoint keys: {list(checkpoint.keys())[:5]}...")  # Show first 5 keys
+                        
+                        # If checkpoint has 'model' key, extract it
+                        if 'model' in checkpoint and len(checkpoint) == 1:
+                            print("Detected wrapped checkpoint format, extracting model state_dict...")
+                            # Create a temporary file with just the model state dict
+                            import tempfile
+                            temp_path = model_path + ".fixed"
+                            torch.save(checkpoint['model'], temp_path)
+                            model_path = temp_path
+                            print("Using extracted model state dict")
                 except Exception as e:
                     print(f"Error loading checkpoint file: {str(e)}")
                     return False
                 
                 try:
+                    # Load with potentially fixed model path
                     sam2_model = build_sam2(config_name, model_path, device=self.device)
                     self.predictor = SAM2ImagePredictor(sam2_model)
                     print("SAM2 model loaded successfully")
                     self.model_type_loaded = "SAM2"
+                    
+                    # Clean up temp file if we created one
+                    if model_path.endswith(".fixed"):
+                        os.remove(model_path)
+                    
                     return True
                 except Exception as build_error:
                     # Handle specific Windows error
