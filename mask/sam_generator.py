@@ -88,7 +88,7 @@ class SAMMaskGenerator:
                 
                 # Try to load and inspect the checkpoint first
                 try:
-                    checkpoint = torch.load(model_path, map_location='cpu')
+                    checkpoint = torch.load(model_path, map_location='cpu', weights_only=False)
                     if isinstance(checkpoint, dict):
                         print(f"Checkpoint keys: {list(checkpoint.keys())[:5]}...")  # Show first 5 keys
                 except Exception as e:
