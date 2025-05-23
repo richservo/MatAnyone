@@ -75,24 +75,13 @@ class MaskEditor:
                 previous_edited_mask = self.ui.edited_mask
                 
                 # Generate mask - use both points and box together for better results
-                # Get logits for potential threshold adjustment
-                mask_result = self.ui.mask_generator.generate_mask_from_image(
-                    self.ui.image, points=points_np, box=box, multimask_output=True, return_logits=True
+                mask, score = self.ui.mask_generator.generate_mask_from_image(
+                    self.ui.image, points=points_np, box=box, multimask_output=True
                 )
-                
-                # Handle both old (mask, score) and new (mask, score, logits) return formats
-                if len(mask_result) == 3:
-                    mask, score, logits = mask_result
-                    # Apply stability filtering if enabled
-                    if hasattr(self.ui.mask_generator, 'stability_score_threshold') and self.ui.mask_generator.stability_score_threshold > 0:
-                        mask = self.ui.mask_generator.filter_mask_by_stability(mask, logits)
-                else:
-                    mask, score = mask_result
-                    
                 print(f"Generated mask with confidence {score:.4f}")
                 
-                # Store the generated mask (ensure it's a boolean array)
-                self.ui.generated_mask = mask.astype(bool)
+                # Store the generated mask
+                self.ui.generated_mask = mask
                 
                 # If we had a previous edited mask, combine it with the new generated mask
                 if previous_edited_mask is not None:
@@ -103,8 +92,7 @@ class MaskEditor:
                     # Strategy: Use a weighted combination of the previous edit and new generation
                     # We favor the previous edits more (they were intentional)
                     # Get a binary mask where the new mask is different from the previous edited mask
-                    # Ensure both masks are boolean for comparison
-                    diff_mask = (self.ui.generated_mask.astype(bool) != previous_edited_mask.astype(bool))
+                    diff_mask = (self.ui.generated_mask != previous_edited_mask)
                     
                     # Where the new mask has content (1s) and we didn't previously edit those pixels,
                     # use the new mask value
@@ -112,7 +100,7 @@ class MaskEditor:
                     self.ui.edited_mask[diff_mask & self.ui.generated_mask] = True
                 else:
                     # Initialize edited mask with the generated mask if no previous edits
-                    self.ui.edited_mask = mask.astype(bool).copy()
+                    self.ui.edited_mask = mask.copy()
                 
             except Exception as e:
                 print(f"Error during mask generation: {str(e)}")
