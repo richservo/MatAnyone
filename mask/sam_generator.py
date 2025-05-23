@@ -121,43 +121,31 @@ class SAMMaskGenerator:
                     return False
                 
                 try:
-                    # If checkpoint has 'model' key, we need to extract and save just the weights
-                    if has_model_key:
-                        print("Extracting model weights from checkpoint...")
-                        # Create a new checkpoint file with just the state dict
-                        weights_only_path = model_path.replace('.pth', '_weights.pth')
-                        
-                        # Check if we already extracted it
-                        if not os.path.exists(weights_only_path):
-                            # Save just the model state dict
-                            torch.save(checkpoint['model'], weights_only_path)
-                            print(f"Saved extracted weights to: {weights_only_path}")
-                        
-                        # Use the extracted weights file
-                        model_path = weights_only_path
+                    # Don't extract weights for normal loading - build_sam2 expects the full checkpoint
+                    weights_only_path = None
                     
-                    # Try loading with the (possibly extracted) checkpoint
+                    # Only extract for manual loading attempt
+                    if has_model_key:
+                        weights_only_path = model_path.replace('.pth', '_weights.pth')
+                        if not os.path.exists(weights_only_path):
+                            print("Preparing weights for manual loading...")
+                            torch.save(checkpoint['model'], weights_only_path)
+                    
+                    # Try loading with the original checkpoint
                     print("Attempting to load SAM2 model...")
                     
-                    # If we extracted weights, try building model without checkpoint first
-                    if has_model_key and weights_only_path:
-                        try:
-                            print("Building SAM2 model without checkpoint...")
-                            sam2_model = build_sam2(config_name, checkpoint_path=None, device=self.device)
-                            
-                            print("Loading extracted weights into model...")
-                            weights = torch.load(weights_only_path, map_location=self.device, weights_only=False)
-                            sam2_model.load_state_dict(weights, strict=True)
-                            
-                            self.predictor = SAM2ImagePredictor(sam2_model)
-                            print("SAM2 model loaded successfully with manual weight loading")
-                            self.model_type_loaded = "SAM2"
-                            return True
-                        except Exception as manual_error:
-                            print(f"Manual loading failed: {manual_error}")
-                            # Fall through to try normal loading
+                    # Check if the issue is with weights_only=True in SAM2's _load_checkpoint
+                    # If the checkpoint has 'model' key, save it in the format SAM2 expects
+                    if has_model_key:
+                        # SAM2's _load_checkpoint uses weights_only=True which can't load our checkpoint
+                        # So let's create a checkpoint without the 'model' wrapper
+                        fixed_path = model_path.replace('.pth', '_fixed.pth')
+                        if not os.path.exists(fixed_path):
+                            print("Creating SAM2-compatible checkpoint...")
+                            # Save just the state dict without wrapper
+                            torch.save(checkpoint['model'], fixed_path, _use_new_zipfile_serialization=False)
+                        model_path = fixed_path
                     
-                    # Try normal loading
                     sam2_model = build_sam2(config_name, model_path, device=self.device)
                     
                     self.predictor = SAM2ImagePredictor(sam2_model)
