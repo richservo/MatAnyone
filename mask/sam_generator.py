@@ -92,30 +92,40 @@ class SAMMaskGenerator:
                     if isinstance(checkpoint, dict):
                         print(f"Checkpoint keys: {list(checkpoint.keys())[:5]}...")  # Show first 5 keys
                         
-                        # If checkpoint has 'model' key, extract it
-                        if 'model' in checkpoint and len(checkpoint) == 1:
-                            print("Detected wrapped checkpoint format, extracting model state_dict...")
-                            # Create a temporary file with just the model state dict
-                            import tempfile
-                            temp_path = model_path + ".fixed"
-                            torch.save(checkpoint['model'], temp_path)
-                            model_path = temp_path
-                            print("Using extracted model state dict")
+                        # If checkpoint has 'model' key, we need to handle it differently
+                        if 'model' in checkpoint:
+                            print("Detected wrapped checkpoint format...")
+                            # Check what's inside the 'model' key
+                            model_data = checkpoint['model']
+                            if isinstance(model_data, dict):
+                                print(f"Model data keys: {list(model_data.keys())[:5]}...")
+                            
+                            # For SAM2, we might need the full checkpoint structure
+                            # Let's not modify it and see if build_sam2 can handle it
                 except Exception as e:
                     print(f"Error loading checkpoint file: {str(e)}")
                     return False
                 
                 try:
-                    # Load with potentially fixed model path
-                    sam2_model = build_sam2(config_name, model_path, device=self.device)
+                    # Try different loading approaches based on checkpoint structure
+                    if 'model' in checkpoint:
+                        # Try loading with checkpoint_path=None and passing state dict directly
+                        print("Attempting to build SAM2 model and load state dict manually...")
+                        sam2_model = build_sam2(config_name, checkpoint_path=None, device=self.device)
+                        
+                        # Load the state dict from the checkpoint
+                        if isinstance(checkpoint['model'], dict):
+                            sam2_model.load_state_dict(checkpoint['model'])
+                        else:
+                            # If 'model' contains something else, try the original path
+                            sam2_model = build_sam2(config_name, model_path, device=self.device)
+                    else:
+                        # Normal loading for standard checkpoints
+                        sam2_model = build_sam2(config_name, model_path, device=self.device)
+                    
                     self.predictor = SAM2ImagePredictor(sam2_model)
                     print("SAM2 model loaded successfully")
                     self.model_type_loaded = "SAM2"
-                    
-                    # Clean up temp file if we created one
-                    if model_path.endswith(".fixed"):
-                        os.remove(model_path)
-                    
                     return True
                 except Exception as build_error:
                     # Handle specific Windows error
