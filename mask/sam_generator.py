@@ -133,7 +133,31 @@ class SAMMaskGenerator:
                     
                     # Try loading SAM2 with the original checkpoint
                     print("Attempting to load SAM2 model...")
-                    sam2_model = build_sam2(config_name, model_path, device=self.device)
+                    
+                    # For SAM2.1, we need to handle the new checkpoint format
+                    # Check if this is a SAM2.1 checkpoint by looking for new keys
+                    if has_model_key and any(key in checkpoint['model'] for key in ['no_obj_embed_spatial', 'obj_ptr_tpos_proj.weight']):
+                        print("Detected SAM2.1 checkpoint format, using compatibility mode...")
+                        # Build the model without loading weights
+                        sam2_model = build_sam2(config_name, None, device=self.device)
+                        
+                        # Load the state dict manually with strict=False to ignore unexpected keys
+                        state_dict = checkpoint['model'] if has_model_key else checkpoint
+                        # Filter out keys that don't exist in the model
+                        model_state = sam2_model.state_dict()
+                        filtered_state_dict = {k: v for k, v in state_dict.items() if k in model_state}
+                        
+                        # Check for missing keys
+                        missing_keys = set(model_state.keys()) - set(filtered_state_dict.keys())
+                        unexpected_keys = set(state_dict.keys()) - set(model_state.keys())
+                        
+                        if unexpected_keys:
+                            print(f"Ignoring unexpected keys from SAM2.1: {list(unexpected_keys)[:5]}...")
+                        
+                        sam2_model.load_state_dict(filtered_state_dict, strict=False)
+                    else:
+                        # Normal loading for older checkpoints
+                        sam2_model = build_sam2(config_name, model_path, device=self.device)
                     
                     self.predictor = SAM2ImagePredictor(sam2_model)
                     print("SAM2 model loaded successfully")
