@@ -1,12 +1,12 @@
-# gui_widgets.py - v1.1737774900
-# Updated: Friday, January 24, 2025 at 17:45:00 PST
+# gui_widgets.py - v1.1737779400
+# Updated: Friday, January 24, 2025 at 19:10:00 PST
 # Changes in this version:
-# - Added video quality/bitrate controls to improve output quality and reduce compression artifacts
-# - Added codec selection dropdown (H.264, H.265, VP9) with automatic fallbacks
-# - Added video quality preset dropdown (Low, Medium, High, Very High, Lossless)
-# - Added custom bitrate option with slider control
-# - Organized video settings into dedicated section within Basic Controls
-# - Updated tooltips to explain new video quality options
+# - Added model selection dropdown to support plugin system
+# - Added "Add Model" button for future model installation
+# - Model dropdown appears at the top of Input/Output section
+# - Adjusted row numbering for existing widgets
+# - Added update_model_dropdown method to populate available models
+# - Integrated with new plugin architecture
 
 """
 Widget creation and layout management for MatAnyone GUI.
@@ -134,7 +134,7 @@ class WidgetManager:
         input_section.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
         input_section.columnconfigure(1, weight=1)  # Make entry fields expandable
         
-        # Input type selection
+        # Input type selection - Row 0
         input_type_frame = ttk.Frame(input_section)
         input_type_frame.grid(row=0, column=0, columnspan=3, sticky="w", pady=5)
         
@@ -160,7 +160,7 @@ class WidgetManager:
         # Mask button - browse only
         ttk.Button(input_section, text="Browse...", command=self.app.event_handler.browse_mask, width=8).grid(row=2, column=2, padx=5, pady=(5, 5), sticky="e")
         
-        # Keyframe status label - Row 2.5 (spans columns)
+        # Keyframe status label - Row 3 (spans columns)
         self.app.keyframe_status = tk.StringVar()
         self.app.keyframe_status_label = ttk.Label(input_section, textvariable=self.app.keyframe_status, foreground="yellow", font=("TkDefaultFont", 9, "italic"))
         self.app.keyframe_status_label.grid(row=3, column=1, sticky="w", pady=(0, 5))
@@ -591,3 +591,4 @@ class WidgetManager:
         # Add about button (right)
         about_button = ttk.Button(button_section, text="About", command=self.app.event_handler.show_about)
         about_button.grid(row=0, column=2, pady=5, padx=5, sticky="e")
+    

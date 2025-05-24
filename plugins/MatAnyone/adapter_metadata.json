@@ -1,0 +1,9 @@
+{
+  "name": "MatAnyone",
+  "source": "https://github.com/pq-yang/MatAnyone",
+  "install_date": "2025-05-23T14:59:44.115655",
+  "adapter_type": "pre_configured",
+  "category": "matting",
+  "supports_mask": true,
+  "supports_auto_mask": true
+}

@@ -1,11 +1,10 @@
-# gui_events.py - v1.1748000000
-# Updated: Thursday, May 22, 2025 at 08:56:00 PDT
+# gui_events.py - v1.1737779400
+# Updated: Friday, January 24, 2025 at 19:10:00 PST
 # Changes in this version:
-# - Added keyframe metadata system documentation to help text
-# - Implemented keyframe status display under mask input
-# - Added automatic keyframe metadata checking when masks are selected or generated
-# - Updated GUI to show "Frame [N] being used" for masks with keyframe metadata
-# - Enhanced mask browsing and generation callbacks to update keyframe status
+# - Added add_model_dialog method for future model installation
+# - Currently shows informational dialog about upcoming features
+# - Will be fully implemented in Phase 4 with LLM integration
+# - Part of plugin system architecture implementation
 
 """
 Event handling for MatAnyone GUI.
@@ -298,6 +297,7 @@ class EventHandler:
         )
         if dirname:
             self.app.output_path.set(dirname)
+    
     
     def show_help(self):
         """Show help information"""

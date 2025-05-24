@@ -181,12 +181,13 @@ def clear_gpu_memory(processor=None, force_full_cleanup=False) -> Dict[str, Any]
         "cleared": memory_cleared
     }
 
-def get_cached_processor(model_path: str, processor_cls=None):
+def get_cached_processor(model_path: str, model_type: str = "matanyone", processor_cls=None):
     """
     Get or create a cached processor instance
     
     Args:
         model_path: Path to the model
+        model_type: Type of model ('matanyone' or any installed plugin)
         processor_cls: Processor class to instantiate if not cached
         
     Returns:
@@ -194,21 +195,23 @@ def get_cached_processor(model_path: str, processor_cls=None):
     """
     global _processors_pool
     
-    # Use the model path as key for the cache
-    if model_path not in _processors_pool:
-        print(f"Creating new processor instance for {model_path}")
+    # Use both model path and type as key for the cache
+    cache_key = f"{model_type}:{model_path}"
+    
+    if cache_key not in _processors_pool:
+        print(f"Creating new processor instance for {model_type} model at {model_path}")
         
         if processor_cls is None:
             # Import here to avoid circular imports
             from core.inference_core import InterruptibleInferenceCore
             processor_cls = InterruptibleInferenceCore
         
-        # Create new processor
-        _processors_pool[model_path] = processor_cls(model_path)
+        # Create new processor with model type
+        _processors_pool[cache_key] = processor_cls(model_path, model_type=model_type)
     else:
-        print(f"Reusing cached processor for {model_path}")
+        print(f"Reusing cached processor for {model_type} model at {model_path}")
     
-    return _processors_pool[model_path]
+    return _processors_pool[cache_key]
 
 def clear_processor_pool():
     """

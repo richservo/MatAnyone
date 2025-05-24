@@ -473,6 +473,69 @@ def analyze_masks_for_optimal_ranges(mask_dir, frame_count, start_x, end_x, star
         return []
 
 
+def create_mask_sequence_for_chunk(mask_dir, start_frame, end_frame,
+                                  start_x, end_x, start_y, end_y, output_dir,
+                                  original_mask=None):
+    """
+    Create a sequence of masks for a video chunk (used by ProPainter).
+    
+    Args:
+        mask_dir: Directory containing full resolution mask frames
+        start_frame, end_frame: Frame range for the chunk
+        start_x, end_x, start_y, end_y: Spatial boundaries of the chunk
+        output_dir: Directory to save the mask sequence
+        original_mask: Fallback mask if frame masks don't exist (numpy array)
+        
+    Returns:
+        Path to the mask sequence directory
+    """
+    import cv2
+    import numpy as np
+    from PIL import Image
+    
+    os.makedirs(output_dir, exist_ok=True)
+    
+    chunk_height = end_y - start_y
+    chunk_width = end_x - start_x
+    
+    for frame_idx in range(start_frame, end_frame + 1):
+        # Try to load mask from mask_dir
+        mask_frame_path = os.path.join(mask_dir, f"{frame_idx:08d}.png")
+        
+        if os.path.exists(mask_frame_path):
+            # Use the propagated mask
+            mask = cv2.imread(mask_frame_path, cv2.IMREAD_GRAYSCALE)
+        elif original_mask is not None:
+            # Fall back to original mask
+            mask = original_mask
+        else:
+            # Create empty mask as last resort
+            mask = np.zeros((chunk_height, chunk_width), dtype=np.uint8)
+        
+        # Extract chunk portion
+        if start_y < mask.shape[0] and start_x < mask.shape[1]:
+            actual_end_y = min(end_y, mask.shape[0])
+            actual_end_x = min(end_x, mask.shape[1])
+            
+            chunk_mask = mask[start_y:actual_end_y, start_x:actual_end_x]
+            
+            # Pad if needed
+            if chunk_mask.shape[0] != chunk_height or chunk_mask.shape[1] != chunk_width:
+                padded_mask = np.zeros((chunk_height, chunk_width), dtype=np.uint8)
+                padded_mask[:chunk_mask.shape[0], :chunk_mask.shape[1]] = chunk_mask
+                chunk_mask = padded_mask
+        else:
+            chunk_mask = np.zeros((chunk_height, chunk_width), dtype=np.uint8)
+        
+        # Ensure binary mask
+        chunk_mask = (chunk_mask > 127).astype(np.uint8) * 255
+        
+        # Save with same frame index for alignment
+        output_path = os.path.join(output_dir, f"{frame_idx:08d}.png")
+        cv2.imwrite(output_path, chunk_mask)
+    
+    return output_dir
+
 def create_optimal_mask_for_range(original_mask, mask_dir, keyframe, start_x, end_x, start_y, end_y, output_path):
     """
     Create an optimal mask for a specific range using either the original mask or a specific keyframe mask

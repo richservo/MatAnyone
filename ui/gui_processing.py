@@ -1,9 +1,10 @@
-# gui_processing.py - v1.1737774900
-# Updated: Friday, January 24, 2025 at 17:55:00 PST
+# gui_processing.py - v1.1737779400
+# Updated: Friday, January 24, 2025 at 19:10:00 PST
 # Changes in this version:
-# - Added video quality settings (codec, quality, custom bitrate) to processing parameters
-# - Pass video encoding settings to all processing functions
-# - Enhanced parameter collection to include new video quality options
+# - Added support for model selection from dropdown
+# - Modified processor initialization to use selected model type
+# - Changed import from utils.image_processing to core.inference_core
+# - Integrated with plugin system architecture
 
 """
 Processing management for MatAnyone GUI.
@@ -17,14 +18,14 @@ import time
 import re
 import traceback
 import platform
-from tkinter import messagebox
+from tkinter import messagebox, BooleanVar, IntVar
 
-# Import our image processing module
+# Import our core inference module
 try:
-    from utils.image_processing import InterruptibleInferenceCore
+    from core.inference_core import InterruptibleInferenceCore
 except ImportError as e:
-    print(f"Error importing image_processing module: {str(e)}")
-    print("Please make sure the image_processing.py file is in the same directory.")
+    print(f"Error importing inference_core module: {str(e)}")
+    print("Please make sure the core modules are properly installed.")
     sys.exit(1)
 
 
@@ -40,10 +41,29 @@ class ProcessingManager:
         """
         self.app = app
         self.processor = None
+        self.current_model = None  # Track which model is loaded
         self.processing_thread = None
         self.processing = False
         self.cancel_processing = False
         self.progress_timer_id = None
+    
+    def clear_model(self):
+        """Clear the current model from memory"""
+        if self.processor is not None:
+            try:
+                # Clear model memory if the method exists
+                if hasattr(self.processor, 'clear_memory'):
+                    self.processor.clear_memory()
+                # Clear any GPU memory
+                import torch
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                print(f"Cleared {self.current_model} from memory")
+            except Exception as e:
+                print(f"Error clearing model memory: {e}")
+            finally:
+                self.processor = None
+                self.current_model = None
     
     def process_video(self):
         """Start or cancel video processing"""
@@ -189,24 +209,40 @@ class ProcessingManager:
             self.app.status_var.set("Loading model...")
             self.update_progress(0, "Loading model...")
             
-            # Initialize the model if not already initialized or if it's not our interruptible version
-            if self.processor is None or not isinstance(self.processor, InterruptibleInferenceCore):
-                print("Initializing MatAnyone model...")
+            # Use MatAnyone model
+            selected_model = "MatAnyone"
+            
+            # Check if we need to initialize the model
+            if (self.processor is None or 
+                not isinstance(self.processor, InterruptibleInferenceCore) or 
+                self.current_model != selected_model):
+                
+                # Clear existing model if switching
+                if self.current_model and self.current_model != selected_model:
+                    print(f"Switching from {self.current_model} to {selected_model}")
+                    self.clear_model()
+                
+                print(f"Initializing {selected_model} model...")
                 try:
                     # Show status during initialization which can take time
                     self.app.status_var.set("Loading model (may take a minute)...")
                     self.app.root.update_idletasks()
                     
-                    # Initialize the model
-                    self.processor = InterruptibleInferenceCore("PeiqingYang/MatAnyone")
-                    print("Model loaded successfully")
+                    print(f"Initializing {selected_model} model...")
+                    self.processor = InterruptibleInferenceCore("", model_type=selected_model)
+                    
+                    self.current_model = selected_model
+                    print(f"Model loaded successfully")
                     self.update_progress(5, "Model loaded successfully")
                 except Exception as e:
                     self.app.root.after(0, self.processing_error, 
                                        f"Failed to initialize model: {str(e)}\n\n"
-                                       f"Please make sure you have properly installed MatAnyone "
+                                       f"Please make sure you have properly installed the model "
                                        f"and have an internet connection for model download.")
                     return
+            else:
+                print(f"Using already loaded {selected_model} model")
+                self.update_progress(5, "Model already loaded")
             
             # Update status
             input_type_str = "image sequence" if self.app.input_type.get() == "sequence" else "video"
@@ -255,6 +291,9 @@ class ProcessingManager:
             }
             process_params.update(video_quality_params)
             
+            # Add model-specific parameters
+            # Using MatAnyone model - no model-specific parameter adjustments needed
+            
             # Setup progress monitoring
             self.setup_progress_monitoring()
             
@@ -286,6 +325,8 @@ class ProcessingManager:
                 # Check if we're doing bidirectional processing
                 bidirectional = bool(self.app.bidirectional.get())
                 
+                # Using MatAnyone - no special workflow handling needed
+                
                 if self.app.use_enhanced_chunks.get() and self.app.use_autochunk.get():
                     print("Using auto-chunk mode based on low-res resolution")
                 elif num_chunks > 1:
@@ -308,7 +349,17 @@ class ProcessingManager:
                 process_params['cleanup_temp'] = bool(self.app.cleanup_temp.get())
                 
                 # Always use enhanced processing
-                if num_chunks > 1 or self.app.use_autochunk.get() or self.app.use_heat_map_chunking.get():
+                use_enhanced = num_chunks > 1 or self.app.use_enhanced_chunks.get() or self.app.use_autochunk.get() or self.app.use_heat_map_chunking.get()
+                
+                print(f"\n=== Processing Path Decision ===")
+                print(f"num_chunks: {num_chunks}")
+                print(f"use_enhanced_chunks: {self.app.use_enhanced_chunks.get()}")
+                print(f"use_autochunk: {self.app.use_autochunk.get()}")
+                print(f"use_heat_map_chunking: {self.app.use_heat_map_chunking.get()}")
+                print(f"Will use enhanced processing: {use_enhanced}")
+                print(f"================================\n")
+                
+                if use_enhanced:
                     if self.app.use_autochunk.get():
                         print("Using automatic chunk sizing based on low-res dimensions")
                     elif chunk_type == "grid":
@@ -347,21 +398,9 @@ class ProcessingManager:
                         progress_callback=self.progress_callback,
                         **process_params
                     )
-                elif num_chunks > 1:
-                    # Use standard chunk processing
-                    print("Using standard chunk processing")
-                    result = self.processor.process_video_in_chunks(
-                        num_chunks=num_chunks,
-                        progress_callback=self.progress_callback,
-                        **process_params
-                    )
                 else:
-                    # Process normally (no chunks)
-                    print("Processing video without chunking")
-                    result = self.processor.process_video(
-                        progress_callback=self.progress_callback,
-                        **process_params
-                    )
+                    # ERROR: Enhanced chunking should ALWAYS be used
+                    raise ValueError("Enhanced chunking is required but was not enabled. This should not happen.")
                 
                 # Process completed successfully
                 if not (hasattr(self, 'cancel_processing') and self.cancel_processing):

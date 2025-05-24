@@ -101,6 +101,43 @@
     **Note:** SAM2 requires Python 3.10+ officially, but our installer makes it work with Python 3.8. 
     If SAM2 is not available, MatAnyone will automatically fall back to SAM1.
 
+## 🔧 Plugin Architecture
+
+MatAnyone now features a **clean, modular plugin architecture** that organizes the codebase for maximum maintainability and extensibility:
+
+### Project Structure
+```
+MatAnyone/
+├── core/                    # Core processing engine
+├── plugins/
+│   └── MatAnyone/          # MatAnyone model plugin
+│       ├── adapter.py      # Model adapter implementation
+│       ├── matanyone/      # Original MatAnyone code
+│       └── hugging_face/   # HuggingFace integration
+├── ui/                     # GUI components
+├── chunking/              # Smart chunking system
+├── mask/                  # Mask processing
+└── utils/                 # Shared utilities
+```
+
+### Key Benefits
+- **🔄 Easy Updates**: MatAnyone plugin can be updated independently via git
+- **🧩 Modular Design**: Clean separation between core engine and model implementation  
+- **⚡ Automatic Updates**: Built-in update checking for seamless improvements
+- **🔧 Extensible**: Plugin architecture allows for future model integrations
+
+### For Developers: Adapting Other Models
+
+While MatAnyone provides the best-tested and supported video matting experience, the plugin architecture makes it possible to experiment with other video processing models. If you're interested in adapting other models to work with MatAnyone's enhanced chunking system and GUI:
+
+**📚 See the [Plugin Architecture Guide](PLUGIN_ARCHITECTURE.md)** for detailed documentation on:
+- Understanding the adapter interface
+- Creating custom model plugins
+- Integration with enhanced chunking
+- Best practices and examples
+
+*Note: This is intended for advanced users and experimental purposes. The core MatAnyone model remains the primary, production-ready solution.*
+
 ## 🤗 Load from Hugging Face
 Alternatively, models can be directly loaded from [Hugging Face](https://huggingface.co/PeiqingYang/MatAnyone) to make inference.
 

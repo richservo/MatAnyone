@@ -14,6 +14,7 @@ Provides user interface for video matting with MatAnyone.
 
 import os
 import sys
+import json
 import tkinter as tk
 from tkinter import StringVar, BooleanVar, IntVar, DoubleVar
 import platform
@@ -86,6 +87,12 @@ class MatAnyoneApp:
         print("Welcome to MatAnyone Video Processor GUI")
         print(f"Current directory: {os.getcwd()}")
         print("Ready to process videos")
+        
+        # Check for plugin updates after GUI is ready
+        self.root.after(100, self.check_plugin_updates)
+        
+        # Show update button if previously declined
+        self.check_for_declined_update()
     
     def clear_console(self):
         """Clear the console output"""
@@ -136,6 +143,95 @@ class MatAnyoneApp:
     def browse_output(self):
         """Delegate to event handler"""
         self.event_handler.browse_output()
+    
+    def check_plugin_updates(self):
+        """Check for updates - simplified since we only use MatAnyone now"""
+        pass
+    
+    def show_update_button(self):
+        """Show the update button when updates are available but declined"""
+        try:
+            # Create update button in the bottom middle
+            self.update_button = ttk.Button(
+                self.root,
+                text="Update Available",
+                command=self.handle_update_click,
+                style="Accent.TButton"
+            )
+            # Place it at the bottom center
+            self.update_button.place(relx=0.5, rely=0.98, anchor='s')
+        except Exception as e:
+            print(f"Error showing update button: {e}")
+    
+    def handle_update_click(self):
+        """Handle click on the update button"""
+        try:
+            from adapters.model_installer import ModelInstaller
+            from tkinter import messagebox
+            import subprocess
+            
+            installer = ModelInstaller()
+            main_update = installer.check_main_repo_updates()
+            
+            if main_update:
+                message = f"MatAnyone has an update available ({main_update['commits_behind']} commits behind).\n\n"
+                message += f"Latest: {main_update['latest_commit']}\n\n"
+                message += "Would you like to update now?"
+                
+                if messagebox.askyesno("MatAnyone Update Available", message):
+                    print("Updating MatAnyone...")
+                    try:
+                        subprocess.run(['git', 'pull', 'origin', main_update['current_branch']], 
+                                     check=True, capture_output=True)
+                        
+                        # Remove the update button and clear the declined flag
+                        if hasattr(self, 'update_button'):
+                            self.update_button.destroy()
+                        self.set_update_declined(False)
+                        
+                        messagebox.showinfo("Update Complete", 
+                                          "MatAnyone has been updated. Please restart the application.")
+                        self.root.quit()
+                    except Exception as e:
+                        print(f"Failed to update MatAnyone: {e}")
+                        messagebox.showerror("Update Failed", 
+                                           f"Failed to update MatAnyone: {str(e)}")
+            else:
+                # No updates available anymore, remove button
+                if hasattr(self, 'update_button'):
+                    self.update_button.destroy()
+                self.set_update_declined(False)
+                messagebox.showinfo("No Updates", "MatAnyone is up to date!")
+                
+        except Exception as e:
+            print(f"Error handling update click: {e}")
+    
+    def is_update_declined(self):
+        """Check if user previously declined the update"""
+        try:
+            config_path = os.path.join(self.config_manager.config_dir, "update_state.json")
+            if os.path.exists(config_path):
+                with open(config_path, 'r') as f:
+                    state = json.load(f)
+                    return state.get('declined_main_update', False)
+        except:
+            pass
+        return False
+    
+    def set_update_declined(self, declined):
+        """Set whether user declined the update"""
+        try:
+            os.makedirs(self.config_manager.config_dir, exist_ok=True)
+            config_path = os.path.join(self.config_manager.config_dir, "update_state.json")
+            with open(config_path, 'w') as f:
+                json.dump({'declined_main_update': declined}, f)
+        except Exception as e:
+            print(f"Error saving update state: {e}")
+    
+    def check_for_declined_update(self):
+        """Check if we should show the update button on startup"""
+        if self.is_update_declined():
+            self.show_update_button()
 
 
 # Add ttk import to maintain compatibility with widget references

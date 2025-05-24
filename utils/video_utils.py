@@ -268,6 +268,55 @@ def cleanup_temporary_files(temp_files, cleanup_enabled=True):
         print("Temporary files kept (cleanup disabled)")
 
 
+def reverse_image_sequence(input_dir, output_dir):
+    """
+    Reverse an image sequence by renaming files in reverse order.
+    
+    Args:
+        input_dir: Directory containing the image sequence
+        output_dir: Directory to save the reversed sequence
+    """
+    import os
+    import shutil
+    
+    # Create output directory
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Get all image files
+    image_files = sorted([f for f in os.listdir(input_dir) if f.endswith(('.png', '.jpg', '.jpeg'))])
+    
+    if not image_files:
+        print(f"No images found in {input_dir}")
+        return
+        
+    # Get frame numbers from filenames
+    frame_numbers = []
+    for filename in image_files:
+        try:
+            # Extract frame number from filename (assuming format like 00000000.png)
+            frame_num = int(filename.split('.')[0])
+            frame_numbers.append((frame_num, filename))
+        except:
+            print(f"Warning: Could not parse frame number from {filename}")
+            
+    # Sort by frame number
+    frame_numbers.sort()
+    
+    # Copy files in reverse order with new names
+    total_frames = len(frame_numbers)
+    for i, (original_num, filename) in enumerate(frame_numbers):
+        # Calculate reversed frame number
+        reversed_num = frame_numbers[total_frames - 1 - i][0]
+        
+        # Copy file with new name
+        src_path = os.path.join(input_dir, filename)
+        ext = os.path.splitext(filename)[1]
+        dst_path = os.path.join(output_dir, f"{reversed_num:08d}{ext}")
+        
+        shutil.copy2(src_path, dst_path)
+    
+    print(f"Reversed {total_frames} frames from {input_dir} to {output_dir}")
+
 def reverse_video(video_path, output_path, codec_choice='Auto', quality='High', custom_bitrate=None):
     """
     Reverse a video file with high quality encoding

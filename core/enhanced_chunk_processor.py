@@ -285,6 +285,12 @@ def process_video_with_enhanced_chunking(processor, input_path, mask_path, outpu
         # Process the low-res video bidirectionally to create a continuous mask
         low_res_process_params = kwargs.copy()
         
+        # Remove ProPainter-specific parameters that MatAnyone doesn't understand
+        propainter_params = ['invert_mask', 'neighbor_length', 'ref_stride', 'mask_dilation', 
+                           'subvideo_length', 'fp16', 'resize_ratio', 'low_res_width', 'low_res_height']
+        for param in propainter_params:
+            low_res_process_params.pop(param, None)
+        
         # Override parameters for low-res processing
         low_res_process_params.update({
             'max_size': -1,  # Use native resolution since it's already low-res
@@ -299,6 +305,16 @@ def process_video_with_enhanced_chunking(processor, input_path, mask_path, outpu
         
         # Check for interrupt before processing
         check_for_interrupt()
+        
+        # ALWAYS use MatAnyone for low-res mask generation, regardless of selected model
+        # This is because we need MatAnyone's mask propagation capabilities
+        lowres_processor = processor
+        if hasattr(processor, 'model_type') and processor.model_type.lower() != 'matanyone':
+            print("Using MatAnyone for low-res mask generation (required for mask propagation)")
+            from core.inference_core import InterruptibleInferenceCore
+            lowres_processor = InterruptibleInferenceCore(model_type="matanyone")
+        else:
+            print("Using MatAnyone for low-res mask generation")
         
         if keyframe_number is not None:
             # NEW KEYFRAME-BASED STEP 1 LOGIC
@@ -332,7 +348,7 @@ def process_video_with_enhanced_chunking(processor, input_path, mask_path, outpu
             forward_params = low_res_process_params.copy()
             forward_params['suffix'] = 'low_res_forward'
             
-            low_res_fgr_forward, low_res_pha_forward = processor.process_video(
+            low_res_fgr_forward, low_res_pha_forward = lowres_processor.process_video(
                 input_path=keyframe_end_segment,
                 mask_path=low_res_mask_path,
                 output_path=temp_dir,
@@ -354,7 +370,7 @@ def process_video_with_enhanced_chunking(processor, input_path, mask_path, outpu
             reverse_params = low_res_process_params.copy()
             reverse_params['suffix'] = 'low_res_reverse'
             
-            low_res_fgr_reverse, low_res_pha_reverse = processor.process_video(
+            low_res_fgr_reverse, low_res_pha_reverse = lowres_processor.process_video(
                 input_path=keyframe_start_reversed,
                 mask_path=low_res_mask_path,
                 output_path=temp_dir,
@@ -419,7 +435,7 @@ def process_video_with_enhanced_chunking(processor, input_path, mask_path, outpu
             forward_params = low_res_process_params.copy()
             forward_params['suffix'] = 'low_res_forward'
             
-            low_res_fgr_forward, low_res_pha_forward = processor.process_video(
+            low_res_fgr_forward, low_res_pha_forward = lowres_processor.process_video(
                 input_path=low_res_video_path,
                 mask_path=low_res_mask_path,  # Use the low-res mask for forward pass
                 output_path=temp_dir,
@@ -427,7 +443,7 @@ def process_video_with_enhanced_chunking(processor, input_path, mask_path, outpu
             )
             
             # Clear memory before reverse pass
-            clear_gpu_memory(processor, force_full_cleanup=True)
+            clear_gpu_memory(lowres_processor, force_full_cleanup=True)
             
             # Check for interrupt before reverse pass
             check_for_interrupt()
@@ -455,7 +471,7 @@ def process_video_with_enhanced_chunking(processor, input_path, mask_path, outpu
             reverse_params = low_res_process_params.copy()
             reverse_params['suffix'] = 'low_res_reverse'
             
-            low_res_fgr_reverse, low_res_pha_reverse = processor.process_video(
+            low_res_fgr_reverse, low_res_pha_reverse = lowres_processor.process_video(
                 input_path=low_res_reversed_path,
                 mask_path=last_frame_mask_path,  # Use the last frame from forward pass as mask for reverse
                 output_path=temp_dir,
@@ -659,6 +675,11 @@ def process_video_with_enhanced_chunking(processor, input_path, mask_path, outpu
         check_for_interrupt()
         
         # Step 4: For each chunk, analyze mask to find optimal ranges and frames
+        # Clean up lowres processor if we created one
+        if lowres_processor != processor:
+            clear_gpu_memory(lowres_processor, force_full_cleanup=True)
+            lowres_processor = None
+            
         print(f"STEP 4: Analyzing masks to identify optimal processing ranges (threshold: {mask_skip_threshold}%)")
         if prioritize_faces:
             print("Using face detection to prioritize frames with faces as keyframes (only within mask regions)")
@@ -710,13 +731,16 @@ def process_video_with_enhanced_chunking(processor, input_path, mask_path, outpu
         # Prepare shared arguments for parallel processing
         shared_args = {
             'processor_model_path': processor.model_path,
+            'processor_model_type': getattr(processor, 'model_type', 'matanyone'),  # Get model type, default to matanyone
             'input_path': input_path,
             'original_mask': original_mask,
             'full_res_mask_dir': full_res_mask_dir,
             'temp_dir': temp_dir,
             'frame_count': frame_count,
             'fps': fps,
-            'kwargs': kwargs
+            'kwargs': kwargs,
+            'low_res_width': low_res_width,
+            'low_res_height': low_res_height
         }
         
         # Define the chunk processing function for parallel execution
@@ -725,11 +749,14 @@ def process_video_with_enhanced_chunking(processor, input_path, mask_path, outpu
             if 'processor_model_path' in shared_args:
                 # Get processor for checking interrupt
                 from utils.memory_utils import get_cached_processor
-                proc = get_cached_processor(shared_args['processor_model_path'])
+                proc = get_cached_processor(shared_args['processor_model_path'], shared_args.get('processor_model_type', 'matanyone'))
                 if hasattr(proc, 'check_interrupt') and callable(proc.check_interrupt):
                     proc.check_interrupt()
             # Extract shared arguments
             processor_model_path = shared_args['processor_model_path']
+            processor_model_type = shared_args.get('processor_model_type', 'matanyone')
+            low_res_width = shared_args['low_res_width']
+            low_res_height = shared_args['low_res_height']
             input_path = shared_args['input_path']
             original_mask = shared_args['original_mask']
             full_res_mask_dir = shared_args['full_res_mask_dir']
@@ -760,7 +787,7 @@ def process_video_with_enhanced_chunking(processor, input_path, mask_path, outpu
                 chunk_pha = os.path.join(chunk_output_dir, f"empty_pha.mp4")
                 
                 # Get a processor from cache or create new one
-                chunk_processor = get_cached_processor(processor_model_path)
+                chunk_processor = get_cached_processor(processor_model_path, processor_model_type)
                 chunk_processor.create_empty_video(chunk_fgr, chunk_width, chunk_height, fps, frame_count, alpha=False)
                 chunk_processor.create_empty_video(chunk_pha, chunk_width, chunk_height, fps, frame_count, alpha=True)
                 
@@ -789,7 +816,7 @@ def process_video_with_enhanced_chunking(processor, input_path, mask_path, outpu
                 if 'processor_model_path' in shared_args:
                     # Get processor for checking interrupt
                     from utils.memory_utils import get_cached_processor
-                    proc = get_cached_processor(shared_args['processor_model_path'])
+                    proc = get_cached_processor(shared_args['processor_model_path'], shared_args.get('processor_model_type', 'matanyone'))
                     if hasattr(proc, 'check_interrupt') and callable(proc.check_interrupt):
                         proc.check_interrupt()
                 print(f"Processing chunk {chunk_idx+1}/{actual_num_chunks}, range {range_idx+1}/{len(optimal_ranges)} (frames {start_frame}-{end_frame}, keyframe {keyframe})")
@@ -813,26 +840,50 @@ def process_video_with_enhanced_chunking(processor, input_path, mask_path, outpu
                         fps
                     )
                     
-                    # Create a mask for this range from the full_res_mask_dir 
-                    # using the first frame of the range
-                    range_mask_path = create_optimal_mask_for_range(
-                        original_mask, 
-                        full_res_mask_dir,
-                        start_frame,  # Use first frame of range as mask
-                        start_x,
-                        end_x,
-                        start_y,
-                        end_y,
-                        os.path.join(chunk_output_dir, f"range_{range_idx}_{start_frame}_{end_frame}_mask.png")
-                    )
+                    # Create mask for this range
+                    if processor_model_type.lower() == "propainter":
+                        # ProPainter needs a mask sequence
+                        from mask.mask_analysis import create_mask_sequence_for_chunk
+                        range_mask_dir = os.path.join(chunk_output_dir, f"range_{range_idx}_masks")
+                        range_mask_path = create_mask_sequence_for_chunk(
+                            full_res_mask_dir,
+                            start_frame,
+                            end_frame,
+                            start_x,
+                            end_x,
+                            start_y,
+                            end_y,
+                            range_mask_dir,
+                            original_mask=np.array(original_mask)
+                        )
+                    else:
+                        # MatAnyone uses a single mask  
+                        range_mask_path = create_optimal_mask_for_range(
+                            original_mask, 
+                            full_res_mask_dir,
+                            start_frame,  # Use first frame of range as mask
+                            start_x,
+                            end_x,
+                            start_y,
+                            end_y,
+                            os.path.join(chunk_output_dir, f"range_{range_idx}_{start_frame}_{end_frame}_mask.png")
+                        )
                     
                     # Get a processor from cache or create new one
                     from core.inference_core import InterruptibleInferenceCore
-                    range_processor = get_cached_processor(processor_model_path)
+                    range_processor = get_cached_processor(processor_model_path, processor_model_type)
                     
                     # Process this range directly
                     range_kwargs = kwargs.copy()
-                    range_kwargs['max_size'] = kwargs.get('max_size', 1024)
+                    
+                    # For ProPainter, process at low resolution (same as mask resolution)
+                    if processor_model_type.lower() == "propainter":
+                        range_kwargs['max_size'] = max(low_res_width, low_res_height)
+                        range_kwargs['low_res_width'] = low_res_width
+                        range_kwargs['low_res_height'] = low_res_height
+                        print(f"Processing ProPainter chunk at {low_res_width}x{low_res_height} resolution (same as low-res mask)")
+                    else:
+                        range_kwargs['max_size'] = kwargs.get('max_size', 1024)
                     
                     range_fgr, range_pha = range_processor.process_video(
                         input_path=sub_video_path,
@@ -888,25 +939,52 @@ def process_video_with_enhanced_chunking(processor, input_path, mask_path, outpu
                         fps
                     )
                     
-                    # Create mask from full_res_mask_dir using the keyframe (first frame of forward segment)
-                    forward_mask_path = create_optimal_mask_for_range(
-                        original_mask, 
-                        full_res_mask_dir,
-                        keyframe,  # Use keyframe as mask for forward pass
-                        start_x,
-                        end_x,
-                        start_y,
-                        end_y,
-                        os.path.join(chunk_output_dir, f"range_{range_idx}_forward_mask_{keyframe}.png")
-                    )
+                    # Create mask for this chunk
+                    if processor_model_type.lower() == "propainter":
+                        # ProPainter needs a mask sequence
+                        from mask.mask_analysis import create_mask_sequence_for_chunk
+                        forward_mask_dir = os.path.join(chunk_output_dir, f"range_{range_idx}_forward_masks")
+                        forward_mask_path = create_mask_sequence_for_chunk(
+                            full_res_mask_dir,
+                            keyframe,  # start_frame
+                            end_frame,  # end_frame
+                            start_x,
+                            end_x,
+                            start_y,
+                            end_y,
+                            forward_mask_dir,
+                            original_mask=np.array(original_mask)
+                        )
+                    else:
+                        # MatAnyone uses a single mask
+                        forward_mask_path = create_optimal_mask_for_range(
+                            original_mask, 
+                            full_res_mask_dir,
+                            keyframe,  # Use keyframe as mask for forward pass
+                            start_x,
+                            end_x,
+                            start_y,
+                            end_y,
+                            os.path.join(chunk_output_dir, f"range_{range_idx}_forward_mask_{keyframe}.png")
+                        )
                     
                     # Get a processor from cache or create new one
                     from core.inference_core import InterruptibleInferenceCore
-                    forward_processor = get_cached_processor(processor_model_path)
+                    forward_processor = get_cached_processor(processor_model_path, processor_model_type)
                     
                     forward_kwargs = kwargs.copy()
                     forward_kwargs['suffix'] = f'range_{range_idx}_forward'
-                    forward_kwargs['max_size'] = kwargs.get('max_size', 1024)
+                    
+                    # For ProPainter, process at low resolution (same as mask resolution)
+                    if processor_model_type.lower() == "propainter":
+                        # Process at the same resolution as the low-res mask
+                        forward_kwargs['max_size'] = max(low_res_width, low_res_height)
+                        print(f"Processing ProPainter chunk at {low_res_width}x{low_res_height} resolution (same as low-res mask)")
+                        # Add low_res_width and low_res_height to kwargs for ProPainter
+                        forward_kwargs['low_res_width'] = low_res_width
+                        forward_kwargs['low_res_height'] = low_res_height
+                    else:
+                        forward_kwargs['max_size'] = kwargs.get('max_size', 1024)
                     
                     forward_output_dir = os.path.join(range_output_dir, "forward")
                     os.makedirs(forward_output_dir, exist_ok=True)
@@ -944,28 +1022,57 @@ def process_video_with_enhanced_chunking(processor, input_path, mask_path, outpu
                         fps
                     )
                     
-                    # Create mask from full_res_mask_dir using the actual first frame of reversed segment
-                    # extract_chunk_frame_range_reversed extracts [start_frame, keyframe) then reverses
-                    # So first frame of reversed video is (keyframe-1)
+                    # Create mask for backward segment
                     backward_first_frame = keyframe - 1
-                    backward_mask_path = create_optimal_mask_for_range(
-                        original_mask, 
-                        full_res_mask_dir,
-                        backward_first_frame,  # Use the actual first frame of the reversed segment
-                        start_x,
-                        end_x,
-                        start_y,
-                        end_y,
-                        os.path.join(chunk_output_dir, f"range_{range_idx}_backward_mask_{backward_first_frame}.png")
-                    )
+                    if processor_model_type.lower() == "propainter":
+                        # ProPainter needs a mask sequence (reversed)
+                        from mask.mask_analysis import create_mask_sequence_for_chunk
+                        backward_mask_dir = os.path.join(chunk_output_dir, f"range_{range_idx}_backward_masks")
+                        
+                        # Create mask sequence for backward range
+                        backward_mask_path = create_mask_sequence_for_chunk(
+                            full_res_mask_dir,
+                            start_frame,  # start_frame
+                            backward_first_frame,  # end_frame (keyframe-1)
+                            start_x,
+                            end_x,
+                            start_y,
+                            end_y,
+                            backward_mask_dir,
+                            original_mask=np.array(original_mask)
+                        )
+                        
+                        # Reverse the mask sequence to match reversed video
+                        from utils.video_utils import reverse_image_sequence
+                        reverse_image_sequence(backward_mask_dir, backward_mask_dir + "_reversed")
+                        backward_mask_path = backward_mask_dir + "_reversed"
+                    else:
+                        # MatAnyone uses a single mask
+                        backward_mask_path = create_optimal_mask_for_range(
+                            original_mask, 
+                            full_res_mask_dir,
+                            backward_first_frame,  # Use the actual first frame of the reversed segment
+                            start_x,
+                            end_x,
+                            start_y,
+                            end_y,
+                            os.path.join(chunk_output_dir, f"range_{range_idx}_backward_mask_{backward_first_frame}.png")
+                        )
                     
                     # Get a processor from cache or create new one
                     from core.inference_core import InterruptibleInferenceCore
-                    backward_processor = get_cached_processor(processor_model_path)
+                    backward_processor = get_cached_processor(processor_model_path, processor_model_type)
                     
                     backward_kwargs = kwargs.copy()
                     backward_kwargs['suffix'] = f'range_{range_idx}_backward'
-                    backward_kwargs['max_size'] = kwargs.get('max_size', 1024)
+                    
+                    # For ProPainter, process at low resolution (same as mask resolution)
+                    if processor_model_type.lower() == "propainter":
+                        backward_kwargs['max_size'] = max(low_res_width, low_res_height)
+                        backward_kwargs['low_res_width'] = low_res_width
+                        backward_kwargs['low_res_height'] = low_res_height
+                    else:
+                        backward_kwargs['max_size'] = kwargs.get('max_size', 1024)
                     
                     backward_output_dir = os.path.join(range_output_dir, "backward")
                     os.makedirs(backward_output_dir, exist_ok=True)
@@ -1028,7 +1135,7 @@ def process_video_with_enhanced_chunking(processor, input_path, mask_path, outpu
                     
                     # Get a processor from cache
                     from core.inference_core import InterruptibleInferenceCore
-                    forward_processor = get_cached_processor(processor_model_path)
+                    forward_processor = get_cached_processor(processor_model_path, processor_model_type)
                     
                     forward_kwargs = kwargs.copy()
                     forward_kwargs['suffix'] = f'range_{range_idx}_forward'
@@ -1085,7 +1192,7 @@ def process_video_with_enhanced_chunking(processor, input_path, mask_path, outpu
                     
                     # Get a processor from cache
                     from core.inference_core import InterruptibleInferenceCore
-                    backward_processor = get_cached_processor(processor_model_path)
+                    backward_processor = get_cached_processor(processor_model_path, processor_model_type)
                     
                     backward_kwargs = kwargs.copy()
                     backward_kwargs['suffix'] = f'range_{range_idx}_backward'
@@ -1151,7 +1258,7 @@ def process_video_with_enhanced_chunking(processor, input_path, mask_path, outpu
                     frame_count = end_frame - start_frame + 1
                     
                     # Get a processor to create empty videos
-                    chunk_processor = get_cached_processor(processor_model_path)
+                    chunk_processor = get_cached_processor(processor_model_path, processor_model_type)
                     chunk_processor.create_empty_video(combined_fgr, chunk_width, chunk_height, fps, frame_count, alpha=False)
                     chunk_processor.create_empty_video(combined_pha, chunk_width, chunk_height, fps, frame_count, alpha=True)
                 
@@ -1211,7 +1318,7 @@ def process_video_with_enhanced_chunking(processor, input_path, mask_path, outpu
                 chunk_pha = os.path.join(chunk_output_dir, f"empty_pha.mp4")
                 
                 # Get a processor from cache
-                chunk_processor = get_cached_processor(processor_model_path)
+                chunk_processor = get_cached_processor(processor_model_path, processor_model_type)
                 chunk_processor.create_empty_video(chunk_fgr, chunk_width, chunk_height, fps, frame_count, alpha=False)
                 chunk_processor.create_empty_video(chunk_pha, chunk_height, chunk_height, fps, frame_count, alpha=True)
                 

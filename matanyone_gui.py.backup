@@ -1,0 +1,322 @@
+# matanyone_gui.py - v1.1737774300
+# Updated: Friday, January 24, 2025 at 17:45:00 PST
+# Changes in this version:
+# - Refactored large monolithic GUI into multiple modules for better maintainability
+# - Split functionality into separate modules: gui_config, gui_processing, gui_events, gui_widgets
+# - Maintained all existing functionality while improving code organization
+# - Simplified main application class to focus on initialization and coordination
+# - No changes needed to other modules - all imports and dependencies handled internally
+
+"""
+MatAnyone Video Processor GUI - Main entry point.
+Provides user interface for video matting with MatAnyone.
+"""
+
+import os
+import sys
+import json
+import tkinter as tk
+from tkinter import StringVar, BooleanVar, IntVar, DoubleVar
+import platform
+
+# Import our modular components
+from ui.gui_config import ConfigManager
+from ui.gui_processing import ProcessingManager
+from ui.gui_events import EventHandler
+from ui.gui_widgets import WidgetManager
+
+# Import our UI components
+from ui.ui_components import TextRedirector
+
+
+class MatAnyoneApp:
+    """Main application class for MatAnyone GUI"""
+    
+    def __init__(self, root):
+        """Initialize the MatAnyone application"""
+        self.root = root
+        self.root.title("MatAnyone Video Processor")
+        self.root.geometry("950x770")  # Slightly taller to accommodate new controls
+        
+        # Initialize managers
+        self.config_manager = ConfigManager()
+        self.widget_manager = WidgetManager(self)
+        self.event_handler = EventHandler(self)
+        self.processing_manager = ProcessingManager(self)
+        
+        # Apply platform-specific styling
+        self.widget_manager.apply_theme()
+        
+        # Create variables for file paths
+        self.video_path = StringVar()
+        self.mask_path = StringVar()
+        self.output_path = StringVar()
+        
+        # Default output path is current directory
+        self.output_path.set(os.path.join(os.getcwd(), "outputs"))
+        
+        # Variable for input type (video or image sequence)
+        self.input_type = StringVar(value="video")
+        
+        # Mask generator settings
+        self.mask_brush_size = 5  # Default brush size
+        
+        # Create main frame
+        self.main_frame = ttk.Frame(root, padding="10")
+        self.main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Setup the original stdout before creating the console
+        self.original_stdout = sys.stdout
+        
+        # Create UI elements
+        self.widget_manager.create_all_widgets()
+        
+        # Redirect stdout to console after initialization
+        sys.stdout = TextRedirector(self.console)
+        
+        # Handle window close event
+        self.root.protocol("WM_DELETE_WINDOW", self.event_handler.on_closing)
+        
+        # Load saved settings
+        self.config_manager.load_settings(self)
+        
+        # Check existing mask for keyframe metadata
+        self.event_handler.check_existing_mask_keyframe()
+        
+        # Print welcome message
+        print("Welcome to MatAnyone Video Processor GUI")
+        print(f"Current directory: {os.getcwd()}")
+        print("Ready to process videos")
+        
+        # Check for plugin updates after GUI is ready
+        self.root.after(100, self.check_plugin_updates)
+        
+        # Show update button if previously declined
+        self.check_for_declined_update()
+    
+    def clear_console(self):
+        """Clear the console output"""
+        try:
+            self.console.configure(state=tk.NORMAL)
+            self.console.delete(1.0, tk.END)
+            self.console.insert(tk.END, "Console cleared. Ready for new output.\n")
+            self.console.configure(state=tk.DISABLED)
+            self.console.update()  # Force update
+        except Exception as e:
+            # If there's an error clearing the console, print to the original stdout
+            if hasattr(self, 'original_stdout'):
+                print(f"Error clearing console: {str(e)}", file=self.original_stdout)
+    
+    # Delegate methods to event handler for backward compatibility
+    def toggle_enhanced_options(self):
+        """Delegate to event handler"""
+        self.event_handler.toggle_enhanced_options()
+    
+    def toggle_autochunk(self):
+        """Delegate to event handler"""
+        self.event_handler.toggle_autochunk()
+    
+    def update_input_label(self):
+        """Delegate to event handler"""
+        self.event_handler.update_input_label()
+    
+    def browse_input(self):
+        """Delegate to event handler"""
+        self.event_handler.browse_input()
+    
+    def browse_video(self):
+        """Delegate to event handler"""
+        self.event_handler.browse_video()
+    
+    def browse_sequence(self):
+        """Delegate to event handler"""
+        self.event_handler.browse_sequence()
+    
+    def browse_mask(self):
+        """Delegate to event handler"""
+        self.event_handler.browse_mask()
+    
+    def generate_mask(self):
+        """Delegate to event handler"""
+        self.event_handler.generate_mask()
+    
+    def browse_output(self):
+        """Delegate to event handler"""
+        self.event_handler.browse_output()
+    
+    def check_plugin_updates(self):
+        """Check for updates - simplified since we only use MatAnyone now"""
+        pass
+            from tkinter import messagebox
+            
+            installer = ModelInstaller()
+            
+            # First check if main app needs update (unless user already declined)
+            if not self.is_update_declined():
+                main_update = installer.check_main_repo_updates()
+                if main_update:
+                    message = f"MatAnyone has an update available ({main_update['commits_behind']} commits behind).\n\n"
+                    message += f"Latest: {main_update['latest_commit']}\n\n"
+                    message += "Would you like to update now?"
+                    
+                    if messagebox.askyesno("MatAnyone Update Available", message):
+                        print("Updating MatAnyone...")
+                        # Pull updates and restart
+                        import subprocess
+                        try:
+                            subprocess.run(['git', 'pull', 'origin', main_update['current_branch']], 
+                                         check=True, capture_output=True)
+                            messagebox.showinfo("Update Complete", 
+                                              "MatAnyone has been updated. Please restart the application.")
+                            self.root.quit()
+                            return
+                        except Exception as e:
+                            print(f"Failed to update MatAnyone: {e}")
+                            messagebox.showerror("Update Failed", 
+                                               f"Failed to update MatAnyone: {str(e)}")
+                    else:
+                        # User declined - remember this and show update button
+                        self.set_update_declined(True)
+                        self.show_update_button()
+            
+            # Then check plugin updates
+            updates = installer.check_for_updates()
+            
+            if updates:
+                # Build message with all plugins that need updates
+                message = "The following plugins have updates available:\n\n"
+                for update in updates:
+                    message += f"• {update['name']} ({update['commits_behind']} commits behind)\n"
+                message += "\nWould you like to update them now?"
+                
+                # Ask user if they want to update
+                if messagebox.askyesno("Plugin Updates Available", message):
+                    # Update each plugin
+                    for update in updates:
+                        print(f"Updating {update['name']}...")
+                        success = installer.update_plugin(update['name'])
+                        if success:
+                            print(f"✓ {update['name']} updated successfully")
+                        else:
+                            print(f"✗ Failed to update {update['name']}")
+                    
+                    # Refresh model dropdown to pick up any changes
+                    self.widget_manager.update_model_dropdown()
+                    print("All updates completed")
+                    
+        except Exception as e:
+            print(f"Error checking for updates: {e}")
+    
+    def show_update_button(self):
+        """Show the update button when updates are available but declined"""
+        try:
+            # Create update button in the bottom middle
+            self.update_button = ttk.Button(
+                self.root,
+                text="Update Available",
+                command=self.handle_update_click,
+                style="Accent.TButton"
+            )
+            # Place it at the bottom center
+            self.update_button.place(relx=0.5, rely=0.98, anchor='s')
+        except Exception as e:
+            print(f"Error showing update button: {e}")
+    
+    def handle_update_click(self):
+        """Handle click on the update button"""
+        try:
+            from adapters.model_installer import ModelInstaller
+            from tkinter import messagebox
+            import subprocess
+            
+            installer = ModelInstaller()
+            main_update = installer.check_main_repo_updates()
+            
+            if main_update:
+                message = f"MatAnyone has an update available ({main_update['commits_behind']} commits behind).\n\n"
+                message += f"Latest: {main_update['latest_commit']}\n\n"
+                message += "Would you like to update now?"
+                
+                if messagebox.askyesno("MatAnyone Update Available", message):
+                    print("Updating MatAnyone...")
+                    try:
+                        subprocess.run(['git', 'pull', 'origin', main_update['current_branch']], 
+                                     check=True, capture_output=True)
+                        
+                        # Remove the update button and clear the declined flag
+                        if hasattr(self, 'update_button'):
+                            self.update_button.destroy()
+                        self.set_update_declined(False)
+                        
+                        messagebox.showinfo("Update Complete", 
+                                          "MatAnyone has been updated. Please restart the application.")
+                        self.root.quit()
+                    except Exception as e:
+                        print(f"Failed to update MatAnyone: {e}")
+                        messagebox.showerror("Update Failed", 
+                                           f"Failed to update MatAnyone: {str(e)}")
+            else:
+                # No updates available anymore, remove button
+                if hasattr(self, 'update_button'):
+                    self.update_button.destroy()
+                self.set_update_declined(False)
+                messagebox.showinfo("No Updates", "MatAnyone is up to date!")
+                
+        except Exception as e:
+            print(f"Error handling update click: {e}")
+    
+    def is_update_declined(self):
+        """Check if user previously declined the update"""
+        try:
+            config_path = os.path.join(self.config_manager.config_dir, "update_state.json")
+            if os.path.exists(config_path):
+                with open(config_path, 'r') as f:
+                    state = json.load(f)
+                    return state.get('declined_main_update', False)
+        except:
+            pass
+        return False
+    
+    def set_update_declined(self, declined):
+        """Set whether user declined the update"""
+        try:
+            os.makedirs(self.config_manager.config_dir, exist_ok=True)
+            config_path = os.path.join(self.config_manager.config_dir, "update_state.json")
+            with open(config_path, 'w') as f:
+                json.dump({'declined_main_update': declined}, f)
+        except Exception as e:
+            print(f"Error saving update state: {e}")
+    
+    def check_for_declined_update(self):
+        """Check if we should show the update button on startup"""
+        if self.is_update_declined():
+            self.show_update_button()
+
+
+# Add ttk import to maintain compatibility with widget references
+from tkinter import ttk
+
+
+if __name__ == "__main__":
+    # Handle command line arguments
+    import argparse
+    parser = argparse.ArgumentParser(description="MatAnyone Video Processor GUI")
+    parser.add_argument('--input', type=str, help='Input video path')
+    parser.add_argument('--mask', type=str, help='Input mask path')
+    parser.add_argument('--output', type=str, help='Output directory')
+    args = parser.parse_args()
+    
+    # Create root window
+    root = tk.Tk()
+    app = MatAnyoneApp(root)
+    
+    # Set initial values from command line arguments
+    if args.input:
+        app.video_path.set(args.input)
+    if args.mask:
+        app.mask_path.set(args.mask)
+    if args.output:
+        app.output_path.set(args.output)
+    
+    # Start GUI main loop
+    root.mainloop()
