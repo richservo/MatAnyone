@@ -130,7 +130,7 @@ MatAnyone/
 
 While MatAnyone provides the best-tested and supported video matting experience, the plugin architecture makes it possible to experiment with other video processing models. If you're interested in adapting other models to work with MatAnyone's enhanced chunking system and GUI:
 
-**📚 See the [Plugin Architecture Guide](PLUGIN_ARCHITECTURE.md)** for detailed documentation on:
+**📚 See the [Plugin Architecture Guide](assets/docs/PLUGIN_ARCHITECTURE.md)** for detailed documentation on:
 - Understanding the adapter interface
 - Creating custom model plugins
 - Integration with enhanced chunking
@@ -245,7 +245,7 @@ The MatAnyone GUI features an groundbreaking **Smart Chunking System** that anal
 
 ![Smart Chunking Demo](assets/smart_chunking_demo.png)
 
-**📚 For developers:** See the [Smart Chunking Developer Guide](SMART_CHUNKING_GUIDE.md) for detailed documentation on using this system in your own projects.
+**📚 For developers:** See the [Smart Chunking Developer Guide](assets/docs/SMART_CHUNKING_GUIDE.md) for detailed documentation on using this system in your own projects.
 
 ### How Smart Chunking Works
 
@@ -429,7 +429,7 @@ The GUI frontend components are designed to work independently of the model, whi
 
 can be used freely in any way you see fit, including commercial applications. These components are modular and can work with any compatible video matting model that provides similar inference capabilities.
 
-For detailed documentation on using the Smart Chunking System independently, see [SMART_CHUNKING_GUIDE.md](SMART_CHUNKING_GUIDE.md) and the [examples](examples/) directory.
+For detailed documentation on using the Smart Chunking System independently, see [SMART_CHUNKING_GUIDE.md](assets/docs/SMART_CHUNKING_GUIDE.md) and the [examples](examples/) directory.
 
 ## 👏 Acknowledgement
 
