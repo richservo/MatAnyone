@@ -107,7 +107,7 @@ class MaskUIInteractions:
             return
         
         # If not initialized for some reason, set basic defaults - this should never happen
-        # because initialize_ui now directly sets all these values properly
+        # because the navigation fix should have set everything up properly
         if not hasattr(self.ui, 'canvas_offset_x'):
             self.ui.canvas_offset_x = 0
         

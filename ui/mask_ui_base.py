@@ -239,71 +239,27 @@ class MaskUIBase:
         # Update brush size from settings
         self.interactions.update_brush_size()
         
-        # Force the canvas to update so we have correct dimensions
-        self.canvas.update_idletasks()
-        
-        # IMPORTANT: Make sure the view is initially fit to window
-        # This guarantees the image is properly sized when first loaded
-        self.interactions.reset_view()
-        
-        # Mark coordinate systems as initialized right away
-        self.coordinate_systems_initialized = True
-        
-        # Schedule forward/backward navigation after a longer delay 
-        # to ensure the initial view is properly rendered
-        self.canvas.after(1000, self._simulate_frame_change)
+        # Apply the forward/backward navigation fix that the user confirmed works
+        # This ensures coordinate systems are properly aligned
+        self.canvas.after(500, self._fix_coordinates_with_navigation)
     
-    def initialize_view(self):
-        """
-        Initialize the view and coordinate systems
-        This is critical for proper coordinate transformation when the mask generator first opens
-        """
-        # First reset the view to fit the image
-        self.interactions.reset_view()
+    def _fix_coordinates_with_navigation(self):
+        """Fix coordinate systems using the forward/backward navigation that works"""
+        # This is the exact sequence the user confirmed works every time
+        print("Applying coordinate fix - navigating forward then back")
         
-        # Force an immediate update of the canvas to ensure coordinate systems are synchronized
-        self.canvas.update_idletasks()
-        
-        # Force another reset and update to ensure everything is synchronized
-        # This is needed because the first reset might happen before the canvas is fully rendered
-        self.canvas.after(100, self._complete_initialization)
-    
-    def _simulate_frame_change(self):
-        """
-        Fix coordinate systems by actually navigating forward and backward
-        This ensures the exact same code path that works during normal frame changes
-        """
-        # Make sure the view fits to window size first
-        self.interactions.reset_view()
-        
-        # Let the window know we're in the middle of processing
-        if not hasattr(self, 'updating_frame'):
-            self.updating_frame = False
-        
-        # Move forward then backward to fix coordinate systems
-        # This is what the user confirmed works 100% of the time
-        print("Moving forward and backward to fix coordinate systems...")
-        
-        # Schedule the moves with a small delay between them
-        # to ensure each completes before the next one starts
-        def forward_then_back():
-            # Navigate forward one frame
-            if hasattr(self, 'next_frame_button'):
-                print("Simulating next frame button click...")
-                self.frame_manager.navigate_frame(1)
-                
-                # Then schedule moving back after a short delay
-                self.canvas.after(500, lambda: go_back_to_first())
-        
-        def go_back_to_first():
-            # Navigate back to first frame
-            if hasattr(self, 'prev_frame_button'):
-                print("Simulating previous frame button click...")
-                self.frame_manager.navigate_frame(-1)
-                print("Navigation completed - coordinate systems should now be fixed")
-        
-        # Start the sequence after a short delay to ensure UI is ready
-        self.canvas.after(500, forward_then_back)
+        # If we have more than 1 frame, navigate forward then back
+        if self.total_frames > 1:
+            # Navigate to frame 1
+            self.frame_manager.set_current_frame(1)
+            # Then navigate back to frame 0 after a short delay
+            self.canvas.after(200, lambda: self.frame_manager.set_current_frame(0))
+        else:
+            # For single frame videos, just reload the current frame
+            # Force a reload by temporarily changing the frame index
+            original_frame = self.current_frame_index
+            self.current_frame_index = -1  # Force the reload
+            self.frame_manager.set_current_frame(original_frame)
     
     def create_mode_selection_frame(self, parent):
         """Create the mode selection radio buttons"""
